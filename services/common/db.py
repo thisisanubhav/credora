@@ -45,6 +45,5 @@ def make_engine(*, role: str = "runtime", database: str | None = None) -> Engine
 def session_scope(engine: Engine) -> Iterator[Session]:
     """One transaction; commit on success, rollback and close on failure."""
     factory = sessionmaker(bind=engine, expire_on_commit=False)
-    with factory() as session:
-        with session.begin():
-            yield session
+    with factory() as session, session.begin():
+        yield session
