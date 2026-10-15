@@ -55,6 +55,13 @@ def runtime_role() -> None:
                 sql.Identifier(role)
             )
         )
+        cursor.execute(sql.SQL("REVOKE UPDATE ON loan_products FROM {}").format(sql.Identifier(role)))
+        cursor.execute(
+            sql.SQL(
+                "GRANT UPDATE (is_current, last_seen_at, retired_at, verification_status) "
+                "ON loan_products TO {}"
+            ).format(sql.Identifier(role))
+        )
         cursor.execute(
             sql.SQL(
                 "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE ON TABLES TO {}"
@@ -94,6 +101,8 @@ def check_connection() -> None:
                 raise ValueError("runtime role unexpectedly has schema DDL privileges")
             if conn.execute(text("SELECT has_table_privilege(current_user, 'users', 'DELETE')")).scalar_one():
                 raise ValueError("runtime role unexpectedly has DELETE privileges")
+            if conn.execute(text("SELECT has_column_privilege(current_user, 'loan_products', 'eligibility_rules', 'UPDATE')")).scalar_one():
+                raise ValueError("runtime role can mutate historical eligibility rules")
         print("Runtime role connected to the application database (credentials hidden).")
     finally:
         engine.dispose()
