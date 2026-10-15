@@ -40,6 +40,17 @@ services:
       DB_POSTGRESDB_USER: ${N8N_DB_USER:?Set N8N_DB_USER in .env}
       DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD:?Set N8N_DB_PASSWORD in .env}
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Set N8N_ENCRYPTION_KEY in .env}
+      INTERNAL_STEP_KEY_ID: ${INTERNAL_STEP_KEY_ID:?Run python3 scripts/local_env.py extend-m9-1}
+      INTERNAL_STEP_SECRET: ${INTERNAL_STEP_SECRET:?Run python3 scripts/local_env.py extend-m9-1}
+      NODE_FUNCTION_ALLOW_BUILTIN: crypto
+      # Local owner-controlled editor only; n8n Code nodes need the signing key.
+      # A shared deployment must use an isolated runner/credential channel instead.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      # Terminal B/C audit records need success data; bound retained applicant/test
+      # payloads in the restricted local PostgreSQL volume.
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "72"
+      EXECUTIONS_DATA_PRUNE_MAX_COUNT: "1000"
       N8N_HOST: ${N8N_HOST:?Set N8N_HOST in .env}
       N8N_PORT: 5678
       N8N_PROTOCOL: ${N8N_PROTOCOL:?Set N8N_PROTOCOL in .env}
@@ -107,6 +118,10 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
       MATCHING_WEBHOOK_SECRET: ${MATCHING_WEBHOOK_SECRET:?Run python3 scripts/local_env.py extend-m5}
+      INTERNAL_STEP_KEY_ID: ${INTERNAL_STEP_KEY_ID:?Run python3 scripts/local_env.py extend-m9-1}
+      INTERNAL_STEP_SECRET: ${INTERNAL_STEP_SECRET:?Run python3 scripts/local_env.py extend-m9-1}
+      INTERNAL_STEP_PREVIOUS_KEY_ID: ${INTERNAL_STEP_PREVIOUS_KEY_ID:-}
+      INTERNAL_STEP_PREVIOUS_SECRET: ${INTERNAL_STEP_PREVIOUS_SECRET:-}
       NOTIFICATION_MODE: ${NOTIFICATION_MODE:-test}
       NOTIFICATION_TRANSPORT: ${NOTIFICATION_TRANSPORT:-mock}
       NOTIFICATION_SES_ENABLED: ${NOTIFICATION_SES_ENABLED:-0}

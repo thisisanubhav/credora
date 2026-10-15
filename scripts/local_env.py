@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / ".env.example"
 LOCAL = ROOT / ".env"
-SECRET_KEYS = ("POSTGRES_PASSWORD", "N8N_DB_PASSWORD", "N8N_ENCRYPTION_KEY", "APP_DB_PASSWORD", "MATCHING_WEBHOOK_SECRET")
+SECRET_KEYS = ("POSTGRES_PASSWORD", "N8N_DB_PASSWORD", "N8N_ENCRYPTION_KEY", "APP_DB_PASSWORD", "MATCHING_WEBHOOK_SECRET", "INTERNAL_STEP_SECRET")
 REQUIRED = (
     "COMPOSE_PROJECT_NAME",
     "POSTGRES_DB",
@@ -32,6 +32,7 @@ REQUIRED = (
     "S3_ENDPOINT_URL", "S3_BUCKET", "CSV_MAX_BYTES", "CSV_CHUNK_SIZE",
     "UPLOAD_URL_TTL_SECONDS", "INGESTION_LEASE_SECONDS",
     "MATCHING_WEBHOOK_SECRET", "MATCHING_WEBHOOK_URL", "ALLOW_SYNTHETIC_DEMO",
+    "INTERNAL_STEP_KEY_ID", "INTERNAL_STEP_SECRET",
     "NOTIFICATION_MODE", "NOTIFICATION_TRANSPORT", "NOTIFICATION_SES_ENABLED",
     "NOTIFICATION_TEST_EMAIL", "NOTIFICATION_FROM_EMAIL", "NOTIFICATION_WEBHOOK_URL",
     "FRONTEND_ORIGIN",
@@ -90,6 +91,17 @@ def validate(values):
         raise ValueError("MATCHING_WEBHOOK_URL must point to the local matching webhook")
     if values["ALLOW_SYNTHETIC_DEMO"] not in {"0", "1"}:
         raise ValueError("ALLOW_SYNTHETIC_DEMO must be 0 or 1")
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{1,32}", values["INTERNAL_STEP_KEY_ID"]):
+        raise ValueError("INTERNAL_STEP_KEY_ID is invalid")
+    previous_id = values.get("INTERNAL_STEP_PREVIOUS_KEY_ID", "")
+    previous_secret = values.get("INTERNAL_STEP_PREVIOUS_SECRET", "")
+    if bool(previous_id) != bool(previous_secret):
+        raise ValueError("previous internal key ID and secret must be configured together")
+    if previous_id and (not re.fullmatch(r"[a-zA-Z0-9_-]{1,32}", previous_id)
+                        or previous_id == values["INTERNAL_STEP_KEY_ID"]
+                        or previous_secret == values["INTERNAL_STEP_SECRET"]
+                        or len(previous_secret) < 32):
+        raise ValueError("previous internal signing key is invalid")
     if values["NOTIFICATION_MODE"] != "test" or values["NOTIFICATION_TRANSPORT"] not in {"mock", "ses"}:
         raise ValueError("M6 permits test-only mock or SES transport")
     if values["NOTIFICATION_SES_ENABLED"] not in {"0", "1"}:
@@ -240,12 +252,37 @@ def extend_m7():
     print("Local M7 browser origin ready.")
 
 
+def extend_m9_1():
+    """Append a distinct local n8n-to-helper signing key, preserving older secrets."""
+    if not LOCAL.is_file():
+        raise ValueError(".env is missing; run `make init`")
+    values = parse_env(LOCAL)
+    additions = {}
+    if "INTERNAL_STEP_KEY_ID" not in values:
+        additions["INTERNAL_STEP_KEY_ID"] = "local-v1"
+    if "INTERNAL_STEP_SECRET" not in values:
+        additions["INTERNAL_STEP_SECRET"] = secrets.token_hex(32)
+    if "INTERNAL_STEP_PREVIOUS_KEY_ID" not in values:
+        additions["INTERNAL_STEP_PREVIOUS_KEY_ID"] = ""
+    if "INTERNAL_STEP_PREVIOUS_SECRET" not in values:
+        additions["INTERNAL_STEP_PREVIOUS_SECRET"] = ""
+    validate(values | additions)
+    if additions:
+        with LOCAL.open("a", encoding="utf-8") as output:
+            output.write("\n# M9.1 private n8n-to-helper signing and optional key rotation\n")
+            for key, value in additions.items():
+                output.write(f"{key}={value}\n")
+        os.chmod(LOCAL, 0o600)
+    print("Local internal step signing ready (secret hidden).")
+
+
 if __name__ == "__main__":
     try:
-        if len(sys.argv) != 2 or sys.argv[1] not in ("init", "check", "extend", "extend-m3", "extend-m5", "extend-m6", "extend-m7"):
-            raise ValueError("usage: python3 scripts/local_env.py {init|check|extend|extend-m3|extend-m5|extend-m6|extend-m7}")
+        if len(sys.argv) != 2 or sys.argv[1] not in ("init", "check", "extend", "extend-m3", "extend-m5", "extend-m6", "extend-m7", "extend-m9-1"):
+            raise ValueError("usage: python3 scripts/local_env.py {init|check|extend|extend-m3|extend-m5|extend-m6|extend-m7|extend-m9-1}")
         {"init": init, "check": check, "extend": extend, "extend-m3": extend_m3,
-         "extend-m5": extend_m5, "extend-m6": extend_m6, "extend-m7": extend_m7}[sys.argv[1]]()
+         "extend-m5": extend_m5, "extend-m6": extend_m6, "extend-m7": extend_m7,
+         "extend-m9-1": extend_m9_1}[sys.argv[1]]()
     except (OSError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         sys.exit(1)

@@ -5,12 +5,14 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from apps.matching_api.router import router as matching_router
 from apps.notification_api.router import router as notification_router
 from services.common.db import make_engine
+from services.common.internal_auth import verify_and_reserve
 from services.discovery.crawler import CrawlError, fetch_source
 from services.discovery.extraction import (
     PageEvidence,
@@ -25,6 +27,27 @@ from services.discovery.sources import SOURCES, require_source
 app = FastAPI(title="Internal Discovery Steps", docs_url=None, redoc_url=None)
 app.include_router(matching_router)
 app.include_router(notification_router)
+
+
+@app.middleware("http")
+async def authenticate_internal_step(request: Request, call_next):  # type: ignore[no-untyped-def]
+    if request.url.path == "/health":
+        return await call_next(request)
+    try:
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise TypeError("invalid_json_object")
+        engine = make_engine()
+        try:
+            accepted = verify_and_reserve(engine, body, dict(request.headers),
+                                          method=request.method, path=request.url.path)
+        finally:
+            engine.dispose()
+    except (TypeError, ValueError, OSError):
+        accepted = False
+    if not accepted:
+        return JSONResponse({"detail": "unauthorized_internal_call"}, status_code=401)
+    return await call_next(request)
 
 
 def _engine():  # type: ignore[no-untyped-def]

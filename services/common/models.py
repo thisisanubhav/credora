@@ -29,6 +29,22 @@ class Base(DeclarativeBase):
     pass
 
 
+class InternalRequestNonce(Base):
+    """Durable replay fence for signed n8n-to-helper calls."""
+
+    __tablename__ = "internal_request_nonces"
+    __table_args__ = (
+        CheckConstraint("char_length(key_id) BETWEEN 1 AND 32", name="ck_internal_nonce_key_id"),
+        CheckConstraint("char_length(nonce) BETWEEN 16 AND 128", name="ck_internal_nonce_length"),
+        Index("ix_internal_nonce_expires", "expires_at"),
+    )
+
+    key_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    nonce: Mapped[str] = mapped_column(String(128), primary_key=True)
+    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+
+
 class UploadBatch(Base):
     __tablename__ = "upload_batches"
     __table_args__ = (

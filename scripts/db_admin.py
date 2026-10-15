@@ -63,7 +63,8 @@ def runtime_role() -> None:
         cursor.execute(
             sql.SQL(
                 "GRANT SELECT, INSERT, UPDATE ON upload_batches, product_sources, matches, "
-                "workflow_executions, outbox_events, notification_logs, upload_row_errors TO {}"
+                "workflow_executions, outbox_events, notification_logs, upload_row_errors, "
+                "internal_request_nonces TO {}"
             ).format(sql.Identifier(role))
         )
         cursor.execute(
@@ -77,7 +78,8 @@ def runtime_role() -> None:
                 "ON loan_products TO {}"
             ).format(sql.Identifier(role))
         )
-    print("Runtime role configured without DDL or DELETE privileges (credentials hidden).")
+        cursor.execute(sql.SQL("GRANT DELETE ON internal_request_nonces TO {}").format(sql.Identifier(role)))
+    print("Runtime role configured without DDL or business-table DELETE privileges (credentials hidden).")
 
 
 def test_database(*, ingestion: bool = False, discovery: bool = False, matching: bool = False,
