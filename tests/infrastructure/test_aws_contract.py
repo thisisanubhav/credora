@@ -21,8 +21,8 @@ def test_serverless_security_and_handlers() -> None:
 
 def test_aws_prerequisite_guard() -> None:
     values = {
-        "AWS_REGION": "us-east-1", "FRONTEND_ORIGIN": "https://upload.example.test",
-        "JWT_ISSUER_URL": "https://issuer.example.test", "JWT_AUDIENCE": "loan-demo",
+        "AWS_REGION": "us-east-1", "FRONTEND_ORIGIN": "https://upload.test",
+        "JWT_ISSUER_URL": "https://issuer.test", "JWT_AUDIENCE": "loan-demo",
         "UPLOAD_BUCKET_NAME": "loan-demo-dev-123456789012", "PRIVATE_SUBNET_A_ID": "subnet-a",
         "PRIVATE_SUBNET_B_ID": "subnet-b", "LAMBDA_SECURITY_GROUP_ID": "sg-lambda",
         "DB_HOST": "private-db.example.test", "DB_NAME": "loan_engine",
@@ -30,6 +30,8 @@ def test_aws_prerequisite_guard() -> None:
         "DB_SECRET_ARN": "arn:aws:secretsmanager:us-east-1:123456789012:secret:loan-db",
     }
     validate_prerequisites(values)
+    with pytest.raises(ValueError, match="example placeholders"):
+        validate_prerequisites({**values, "UPLOAD_BUCKET_NAME": "loan-engine-dev-ACCOUNTID-uploads"})
     with pytest.raises(ValueError, match="HTTPS"):
         validate_prerequisites({**values, "FRONTEND_ORIGIN": "http://localhost:3107"})
     with pytest.raises(ValueError, match="private RDS"):

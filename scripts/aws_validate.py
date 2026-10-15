@@ -77,6 +77,12 @@ def validate_prerequisites(values: dict[str, str]) -> None:
     missing = [key for key in required if not values.get(key)]
     if missing:
         raise ValueError("missing deployment prerequisites: " + ", ".join(missing))
+    placeholders = [key for key in required if re.search(
+        r"REPLACE|ACCOUNTID|example\.(org|com|internal)|issuer\.example|upload\.example",
+        values[key], re.IGNORECASE,
+    )]
+    if placeholders:
+        raise ValueError("example placeholders are not deployment configuration: " + ", ".join(placeholders))
     if not values["FRONTEND_ORIGIN"].startswith("https://"):
         raise ValueError("cloud frontend origin must be HTTPS")
     if not values["JWT_ISSUER_URL"].startswith("https://"):

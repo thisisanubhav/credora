@@ -6,6 +6,8 @@
 
 From the repository root, install locked Python dependencies with `uv sync --frozen`. Run `make aws-config-offline aws-test` to parse and inspect the template without variable resolution or AWS calls. `make aws-package-local` builds `.build/m8/lambda.zip` with Linux x86_64 wheels and checks its handlers and size; it uses package-index downloads but no AWS. `make aws-preflight-offline` validates deployment environment *shapes* when a future operator has filled `infrastructure/aws.env.example` in an ignored private file. It does not test resource existence. No Makefile target deploys anything.
 
+The checked-in `infrastructure/aws.env.example` deliberately contains placeholders; passing it to preflight must fail. Even a syntactically valid private preflight is **not** evidence that an AWS resource exists or that deployment is permitted.
+
 The Serverless v4 CLI is pinned by `infrastructure/package-lock.json`. Do **not** treat `serverless package` as an offline check: [Serverless documents](https://www.serverless.com/framework/docs/providers/aws/guide/packaging) that packaging may need AWS credentials to resolve account/SSM/S3 state, and [v4 requires authentication](https://www.serverless.com/framework/docs/guides/upgrading-v4). Actual CLI packaging and CloudFormation validation remain blocked by the zero budget; local zip and static YAML checks are explicitly narrower.
 
 ## Conditional prerequisites (not performed)
