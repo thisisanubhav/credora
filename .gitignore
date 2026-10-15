@@ -1,0 +1,45 @@
+# Environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# Serverless / AWS local artifacts
+.serverless/
+.aws-sam/
+
+# n8n local state and data
+.n8n/
+postgres-data/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+
+# Temporary files
+tmp/
+*.log
+
