@@ -348,3 +348,57 @@ Credentials live in n8n’s encrypted store or AWS secret storage, not `.env.exa
 5. Exact employment-status controlled vocabulary.
 6. Whether notification `match_ids` remains a UUID array or becomes a join table if query needs justify normalization.
 
+## M2 implementation review (2026-10-15)
+
+The implementation retains the batch, user, source, immutable-version-by-convention product, match, execution, outbox, and notification boundaries above. It uses SQLAlchemy 2 models and two explicit Alembic revisions. The second revision adds checks that Alembic autogeneration does not detect automatically. These are deliberate deviations/clarifications from the planning contract:
+
+| Topic | M2 choice and reason |
+|---|---|
+| Outbox name | `outbox_events` rather than `workflow_outbox`, matching the M2 task terminology. `aggregate_id` is a real FK to `upload_batches` for the only supported event type, `upload_batch.ready.v1`. Future aggregate types require a new migration rather than an unsafe generic UUID. |
+| Notification membership | A ninth, narrow `notification_matches` join table replaces the planned UUID array. Its FKs prove the referenced notification/match exist and `UNIQUE(match_id)` prevents one match being reserved in two messages. M6 must still check `notification_logs.user_id = matches.user_id` when creating links. |
+| Product source URL | `source_url` replaces `canonical_url` for the product page; `source_product_key` remains the stable identity within a source. A discovery validator must enforce the HTTPS URL belongs to the allowlisted source origin; SQL `LIKE` only ensures an HTTPS-shaped string. |
+| Product criteria | Added nullable `max_credit_score` and explicit `retrieved_at` to satisfy the requested field list; income, scores, ages, rate bounds, and employment projections remain nullable when unstated. `eligibility_rules` is JSONB and validated by `services.common.schemas` before persistence. Verified rows additionally require a complete, nonempty rule document in PostgreSQL. Missing/ambiguous conditions never imply automatic qualification. |
+| Email | Lowercase `TEXT` with a database normalization check avoids the `CITEXT` extension. M3 performs actual email syntax validation; the database does not pretend a lowercase string is deliverable. |
+| UUIDs | Python UUIDv4 defaults. n8n/SQL writers must supply UUIDs explicitly; no extension is needed. |
+| Currency | Every user row requires an explicit three-letter currency; no default was chosen without inspecting the sample CSV. M3 must define the CSV currency contract before ingestion. |
+| Employment | Database vocabulary: `salaried`, `self_employed`, `contract`, `unemployed`, `retired`, `student`, `other`. M3 must reject unrecognized raw values instead of silently mapping them to `other`. |
+| Cross-batch identity | Duplicate `source_user_id` values are allowed across batches. Within a batch they are rejected by `UNIQUE(upload_batch_id, source_user_id)`. Email is not unique, because distinct source IDs can share an address. |
+| Match status | `potential` or `withdrawn`; there is no `approved` state. `(user_id, product_id)` uniquely identifies one evaluated product version. Re-running a workflow uses `ON CONFLICT DO NOTHING` and only newly returned IDs advance to notification. |
+| Partial-row policy | Remains an M3 decision. The database can represent `processed_with_errors` and row counts but does not choose ingestion behavior. |
+
+### Privilege and lifecycle boundaries
+
+The local bootstrap `POSTGRES_USER` owns the database and runs migrations. `make db-role` creates/updates `APP_DB_USER` after `make db-upgrade`, granting connect, schema usage, SELECT/INSERT, and limited UPDATE but not DDL or DELETE. Product updates are restricted to `is_current`, `last_seen_at`, `retired_at`, and `verification_status`; historical eligibility columns cannot be updated by the runtime role. Run `make db-role` again after future migrations to grant new tables and reapply the product restriction. The n8n **internal persistence** login remains isolated in its own database; future workflow PostgreSQL credentials must use the application runtime role, not the n8n internal login. Cloud deployments should split ingestion and n8n DML privileges further when their concrete queries are known. SQLAlchemy session scopes commit/rollback and close; Lambda connections use `NullPool`.
+
+The schema cannot prove evidence quotations occur on a live page, that JSON projections equal the source document, that a notification link belongs to its log's user, or that an alias is owner-controlled. The deterministic validator and later n8n workflows must enforce those cross-system facts. Schema checks are a last guard, not a substitute for source validation. No real loan criteria or users are seeded in M2.
+
+### Outbox and email recovery
+
+`outbox_events` has `pending`, `processing`, `delivered`, and `failed_permanent` states; `retry_count`, `next_attempt_at`, `claimed_at`, and `claim_expires_at` permit bounded retries and expired-claim recovery. A future dispatcher should atomically claim due rows in a short transaction with `FOR UPDATE SKIP LOCKED`, set a lease, commit, then call the webhook outside the transaction. On timeout, the event remains retryable with the same `event_id`; `UNIQUE(aggregate_id,event_type)` and `UNIQUE(workflow_executions.event_id)` absorb replay. An example claim shape is exercised concurrently in the integration tests. The dispatcher itself is M3/M5, not M2.
+
+Notification reservation uses a deterministic unique `idempotency_key` and inserts `notification_matches` in the same transaction. `attempt_count`, `last_attempt_at`, `status`, `last_error_code`, and optional unique `ses_message_id` track attempts. A confirmed provider rejection may be retried under the same reservation. If SES accepted a request but the workflow crashed before recording success, the result is **ambiguous**; do not blindly resend. Reconcile by provider message ID or manual inbox review. This is at-least-once processing, not exactly-once email delivery. The `recipient_alias` column records the actual redirected address, but M6 must enforce the configured owner-controlled allowlist before reservation/send. No CSV address is sent in M2.
+
+### Index/query review
+
+- `users(upload_batch_id)` serves `WHERE upload_batch_id = :batch_id`; 10,000 users/batch and ~50 products do not justify speculative income/score indexes. Stage-1 matching may scan the batch while checking the small current-product set. Benchmark with `EXPLAIN (ANALYZE, BUFFERS)` in M5 before adding range indexes.
+- Partial `loan_products(source_id) WHERE is_current AND verification_status='verified' AND retired_at IS NULL` serves the matchable-product scan. Partial unique `(source_id,source_product_key) WHERE is_current` prevents two concurrent current versions; unique `(source_id,source_product_key,version)` preserves version identity.
+- `matches(user_id,notified_at)` and the partial unnotified index serve Workflow C; the unique `(user_id,product_id)` index is the duplicate-match arbiter. `notification_matches(match_id)` is the duplicate-notification arbiter.
+- Partial `outbox_events(next_attempt_at) WHERE status='pending'` supports due-event claims. The separate expired-claim index supports recovery. `notification_logs(status,updated_at)` serves failed/ambiguous review. No benchmark timings are claimed.
+
+Representative parameterized SQL (the UUID parameters are bound, never concatenated):
+
+```sql
+SELECT id, source_user_id, monthly_income, credit_score, age
+FROM users WHERE upload_batch_id = :batch_id;
+
+SELECT id, eligibility_rules FROM loan_products
+WHERE is_current AND verification_status = 'verified' AND retired_at IS NULL;
+
+SELECT event_id FROM outbox_events
+WHERE status = 'pending' AND next_attempt_at <= now()
+ORDER BY next_attempt_at, event_id
+FOR UPDATE SKIP LOCKED LIMIT :claim_limit;
+```
+
+The dedicated `TEST_DB_NAME` must end in `_test` and differ from both development databases. Integration tests downgrade/re-upgrade **only that database**; the application and n8n volumes are never reset by M2 tests. Downgrading the application database would drop its business tables and is not a routine developer command.
+
