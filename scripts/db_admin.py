@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 import sys
 
 import psycopg
@@ -14,12 +15,23 @@ from services.common.db import make_engine
 from sqlalchemy import text
 
 
+def admin_connection(database: str, *, autocommit: bool = False) -> psycopg.Connection:
+    return psycopg.connect(
+        host=os.environ.get("POSTGRES_HOST", "127.0.0.1"),
+        port=int(os.environ.get("POSTGRES_PORT", "5432")),
+        dbname=database,
+        user=os.environ["POSTGRES_USER"],
+        password=os.environ["POSTGRES_PASSWORD"],
+        autocommit=autocommit,
+    )
+
+
 def runtime_role() -> None:
     role = os.environ["APP_DB_USER"]
     password = os.environ["APP_DB_PASSWORD"]
     if role in {os.environ["POSTGRES_USER"], os.environ["N8N_DB_USER"]}:
         raise ValueError("runtime role must differ from bootstrap and n8n roles")
-    with psycopg.connect(database_url(role="migration", database="postgres").render_as_string(hide_password=False)) as conn:
+    with admin_connection("postgres") as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,))
             if cursor.fetchone() is None:
@@ -27,7 +39,7 @@ def runtime_role() -> None:
             else:
                 cursor.execute(sql.SQL("ALTER ROLE {} PASSWORD {}").format(sql.Identifier(role), sql.Literal(password)))
             cursor.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(sql.Identifier(os.environ["POSTGRES_DB"]), sql.Identifier(role)))
-    with psycopg.connect(database_url(role="migration").render_as_string(hide_password=False)) as conn:
+    with admin_connection(os.environ["POSTGRES_DB"]) as conn:
         with conn.cursor() as cursor:
             cursor.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(role)))
             cursor.execute(sql.SQL("GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO {}").format(sql.Identifier(role)))
@@ -39,7 +51,7 @@ def test_database() -> None:
     name = os.environ["TEST_DB_NAME"]
     if not name.endswith("_test") or name in {os.environ["POSTGRES_DB"], os.environ["N8N_DB_NAME"]}:
         raise ValueError("refusing unsafe test database name")
-    with psycopg.connect(database_url(role="migration", database="postgres").render_as_string(hide_password=False), autocommit=True) as conn:
+    with admin_connection("postgres", autocommit=True) as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,))
             if cursor.fetchone() is None:
@@ -59,7 +71,26 @@ def check_connection() -> None:
         engine.dispose()
 
 
+def rotate_local_admin() -> None:
+    """Rotate the ignored local bootstrap password after accidental console exposure."""
+    from pathlib import Path
+
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    old = os.environ["POSTGRES_PASSWORD"]
+    new = secrets.token_hex(32)
+    with admin_connection("postgres") as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(sql.SQL("ALTER ROLE {} PASSWORD {}").format(sql.Identifier(os.environ["POSTGRES_USER"]), sql.Literal(new)))
+    source = env_path.read_text(encoding="utf-8")
+    expected = f"POSTGRES_PASSWORD={old}"
+    if source.count(expected) != 1:
+        raise ValueError("local .env admin password line not found uniquely")
+    env_path.write_text(source.replace(expected, f"POSTGRES_PASSWORD={new}"), encoding="utf-8")
+    os.chmod(env_path, 0o600)
+    print("Rotated ignored local bootstrap password (value hidden).")
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in {"runtime-role", "test-database", "check"}:
-        raise SystemExit("usage: python -m scripts.db_admin {runtime-role|test-database|check}")
-    {"runtime-role": runtime_role, "test-database": test_database, "check": check_connection}[sys.argv[1]]()
+    if len(sys.argv) != 2 or sys.argv[1] not in {"runtime-role", "test-database", "check", "rotate-admin"}:
+        raise SystemExit("usage: python -m scripts.db_admin {runtime-role|test-database|check|rotate-admin}")
+    {"runtime-role": runtime_role, "test-database": test_database, "check": check_connection, "rotate-admin": rotate_local_admin}[sys.argv[1]]()
