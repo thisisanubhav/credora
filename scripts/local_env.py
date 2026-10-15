@@ -11,13 +11,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / ".env.example"
 LOCAL = ROOT / ".env"
-SECRET_KEYS = ("POSTGRES_PASSWORD", "N8N_DB_PASSWORD", "N8N_ENCRYPTION_KEY")
+SECRET_KEYS = ("POSTGRES_PASSWORD", "N8N_DB_PASSWORD", "N8N_ENCRYPTION_KEY", "APP_DB_PASSWORD")
 REQUIRED = (
     "COMPOSE_PROJECT_NAME",
     "POSTGRES_DB",
     "POSTGRES_USER",
     "POSTGRES_PASSWORD",
     "POSTGRES_PORT",
+    "APP_DB_USER",
+    "APP_DB_PASSWORD",
+    "TEST_DB_NAME",
     "N8N_DB_NAME",
     "N8N_DB_USER",
     "N8N_DB_PASSWORD",
@@ -55,13 +58,17 @@ def validate(values):
             raise ValueError(f"{key} must be a unique random value of at least 32 characters")
     if len({values[key] for key in SECRET_KEYS}) != len(SECRET_KEYS):
         raise ValueError("local secrets must be distinct")
-    for key in ("POSTGRES_DB", "POSTGRES_USER", "N8N_DB_NAME", "N8N_DB_USER"):
+    for key in ("POSTGRES_DB", "POSTGRES_USER", "N8N_DB_NAME", "N8N_DB_USER", "APP_DB_USER", "TEST_DB_NAME"):
         if not re.fullmatch(r"[a-z_][a-z0-9_]*", values[key]):
             raise ValueError(f"{key} must be a lowercase PostgreSQL identifier")
     if values["POSTGRES_DB"] == values["N8N_DB_NAME"]:
         raise ValueError("application and n8n database names must differ")
     if values["POSTGRES_USER"] == values["N8N_DB_USER"]:
         raise ValueError("application and n8n database users must differ")
+    if len({values[key] for key in ("POSTGRES_DB", "N8N_DB_NAME", "TEST_DB_NAME")}) != 3:
+        raise ValueError("test, application and n8n database names must differ")
+    if len({values[key] for key in ("POSTGRES_USER", "N8N_DB_USER", "APP_DB_USER")}) != 3:
+        raise ValueError("bootstrap, n8n and runtime database users must differ")
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", values["COMPOSE_PROJECT_NAME"]):
         raise ValueError("COMPOSE_PROJECT_NAME contains invalid characters")
     for key in ("POSTGRES_PORT", "N8N_PORT"):
@@ -106,11 +113,34 @@ def check():
     print("Local environment is valid (secret values hidden).")
 
 
+def extend():
+    """Add only the new M2 settings to an existing M1 .env."""
+    if not LOCAL.is_file():
+        raise ValueError(".env is missing; run `make init`")
+    values = parse_env(LOCAL)
+    if all(key in values for key in ("APP_DB_USER", "APP_DB_PASSWORD", "TEST_DB_NAME")):
+        validate(values)
+        print("Local environment already has M2 settings (secret values hidden).")
+        return
+    additions = {
+        "APP_DB_USER": "loan_engine_runtime",
+        "APP_DB_PASSWORD": secrets.token_hex(32),
+        "TEST_DB_NAME": "loan_engine_test",
+    }
+    additions = {key: value for key, value in additions.items() if key not in values}
+    validate(values | additions)
+    with LOCAL.open("a", encoding="utf-8") as output:
+        for key, value in additions.items():
+            output.write(f"{key}={value}\n")
+    os.chmod(LOCAL, 0o600)
+    print("Added missing M2 settings to ignored .env (secret values hidden).")
+
+
 if __name__ == "__main__":
     try:
-        if len(sys.argv) != 2 or sys.argv[1] not in ("init", "check"):
-            raise ValueError("usage: python3 scripts/local_env.py {init|check}")
-        (init if sys.argv[1] == "init" else check)()
+        if len(sys.argv) != 2 or sys.argv[1] not in ("init", "check", "extend"):
+            raise ValueError("usage: python3 scripts/local_env.py {init|check|extend}")
+        {"init": init, "check": check, "extend": extend}[sys.argv[1]]()
     except (OSError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         sys.exit(1)
