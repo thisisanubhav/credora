@@ -2,14 +2,14 @@
 
 An event-driven platform that ingests CSV batches, discovers personal-loan products, evaluates eligibility, and sends test notifications through workflows orchestrated by self-hosted n8n.
 
-> **Current phase:** M5 optimized matching. Workflow A discovers source-grounded bank products; Workflow B receives signed outbox events through self-hosted n8n, uses batch-scoped SQL and deterministic rules, and commits potential matches plus a completion event. Live SBI/Axis products remain review-required and unmatchable; synthetic demo products are isolated. Notifications, frontend, AWS resources, and paid integrations are not implemented or provisioned.
+> **Current phase:** M7 local frontend. The Next.js page requests a presigned POST from the existing FastAPI API, uploads directly to LocalStack, and displays actual batch counts and row errors. Workflows A/B/C remain self-hosted in n8n; notification delivery is test-only/mock by default. AWS resources have not been provisioned.
 
 ## Planned flow
 
-1. A Next.js UI requests a short-lived presigned S3 upload and sends the CSV directly to S3.
+1. The Next.js UI requests a short-lived presigned S3 POST and sends the CSV directly to S3 or local LocalStack.
 2. An S3 `ObjectCreated` event invokes a Python ingestion Lambda.
 3. The Lambda validates the CSV and atomically persists an upload batch and its users in PostgreSQL.
-4. A later outbox dispatcher will invoke an authenticated n8n matching webhook with the committed batch identifier. M3 only writes the pending event.
+4. The outbox dispatcher invokes an authenticated n8n matching webhook with the committed batch identifier.
 5. n8n runs set-based SQL pre-filtering, deterministic rules, and only then any necessary bounded LLM checks.
 6. Qualified matches are persisted idempotently; a notification workflow groups new matches by user and sends only to controlled test aliases through AWS SES.
 7. Separately, a scheduled n8n workflow discovers products from an allowlist of public sources, extracts source-grounded criteria with Gemini Flash where useful, validates the JSON deterministically, and upserts versioned products.
@@ -24,13 +24,14 @@ See the [architecture](docs/architecture.md) for diagrams and failure handling.
 - [Optimization strategy](docs/optimization-strategy.md)
 - [Development roadmap](docs/development-roadmap.md)
 - [CSV contract and sample findings](docs/csv-contract.md)
+- [Frontend and browser evidence](docs/frontend-evidence.md)
 
 ## Proposed repository layout
 
 ```text
 .
 ├── apps/
-│   ├── api/                    # Presign HTTP API; optional batch status later
+│   ├── api/                    # Presign HTTP API and batch/error status
 │   └── web/                    # Minimal Next.js upload UI
 ├── services/
 │   ├── ingestion/              # S3-triggered CSV validation and persistence
@@ -74,7 +75,7 @@ This is a modular monorepo, not a set of independently deployed microservices. `
 - Python 3.9+ for the standard-library-only environment and smoke scripts. M2 Python models and tests require Python 3.12+; `.python-version` selects 3.12. On this host, `python3` resolves to 3.9.6, while `python3.12` is installed separately (3.12.14).
 - `uv` for the locked M2 Python dependencies. Run `uv sync --frozen` once after checkout; `uv run --frozen` in the Make targets then uses the local environment.
 - `make` for the root commands. Equivalent Docker Compose commands are shown below.
-- Node is not needed to start M1. Frontend work in M7 uses Node 24 LTS, selected in `.nvmrc`. The current host's Node 25 is end of life and should be switched before M7.
+- Node is not needed for the M1 containers. The M7 frontend uses Node 24 LTS via `.nvmrc` (Node 22+ supported by the pinned Next.js 16); the host used Node 25.8.1 for verification because Node 24 was unavailable.
 
 The containers are pinned to `postgres:16.15-bookworm` and `n8nio/n8n:2.43.5`. PostgreSQL 16 and n8n 2.43.5 both publish arm64 and amd64 images. n8n 2.43.5 is a stable release and supports PostgreSQL persistence and the `/healthz` endpoint. See the [PostgreSQL image tags](https://hub.docker.com/_/postgres), [n8n Compose guide](https://docs.n8n.io/deploy/host-n8n/install-options/use-a-cloud-provider/use-docker-compose/), [n8n database settings](https://docs.n8n.io/deploy/host-n8n/configure-n8n/basic-configuration/use-environment-variables/database/), and [n8n endpoint settings](https://docs.n8n.io/deploy/host-n8n/configure-n8n/basic-configuration/use-environment-variables/endpoints/).
 
@@ -232,4 +233,36 @@ make notification-e2e
 ```
 
 The same dispatcher now routes Workflow B completion events to Workflow C. `make notification-e2e` performs real local ingestion and both n8n workflows; its final notification acceptance is mocked, so **no email is sent**. It proves one message group for a user with one synthetic match, one for a user with two, none for an unmatched user, and duplicate-event safety. See [notification policy](docs/notification-policy.md), [Workflow C/SES setup](docs/notification-workflow.md), and [sanitized evidence](docs/notification-evidence.md). To attempt a real SES send, a controlled verified inbox and sender, n8n AWS credential, explicit `.env` switches, and an inbox receipt check are required. SES credentials/identities were unavailable for M6; no receipt is claimed. The installed SES node sends HTML here, while the helper also generates plain text; its `email.send` operation does not produce multipart alternatives.
+
+### Browser upload interface (M7)
+
+Use Node 24 LTS (`nvm use` if available), then from the repository root:
+
+```sh
+python3 scripts/local_env.py extend-m7   # Existing checkout only; adds ignored FRONTEND_ORIGIN
+make up
+make db-upgrade
+make db-role
+make s3-init                         # Reapply LocalStack bucket CORS after origin changes
+make web-install                     # Pinned npm lockfile dependencies
+make api                             # Terminal 1: 127.0.0.1:8000
+make local-worker                    # Terminal 2: LocalStack object-created bridge
+make web-dev                         # Terminal 3: 127.0.0.1:3107
+```
+
+Open <http://127.0.0.1:3107>. Use the six [CSV columns](docs/csv-contract.md); choose or drop a UTF-8 `.csv` under 10 MB and click **Upload CSV**. The page asks `POST /uploads` for a short-lived, size-constrained policy using a per-file idempotency key, then sends the multipart form directly from the browser to LocalStack. CSV bytes never pass through Next.js or FastAPI. The browser polls `GET /uploads/{batch_id}` and pages `GET /uploads/{batch_id}/errors`; it shows only counts, row numbers, field names, and safe reasons, not applicant values. The batch ID remains in the URL so the status can be recovered after reload. Automatic polling is bounded (90 checks, roughly four minutes) and stops at ingestion-terminal states; use **Refresh status** to check a later matching state. Neither match counts nor notification counts are invented.
+
+The root ignored `.env` contains `FRONTEND_ORIGIN=http://127.0.0.1:3107` for the API and LocalStack CORS rules. The frontend's public, non-secret settings are in [apps/web/.env.local.example](apps/web/.env.local.example); copy to `.env.local` only when changing the API address or 10 MB advisory limit. The API and presigned S3 URL must both use browser-reachable loopback addresses, **not** Compose names such as `localstack`. Port 3107 avoids an unrelated service on this host's port 3000. If the browser reports a CORS or storage error, confirm `make api`, `make up`, `make s3-init`, and the exact `FRONTEND_ORIGIN`; rerun `make s3-init` after changing origins. If a policy expires, **Retry upload** reuses the idempotency key and requests fresh fields while the batch is still awaiting the object. If processing already began, use the batch URL/status instead of creating a new upload.
+
+LocalStack does not invoke the ingestion Lambda automatically in this minimal setup. `make local-worker` polls known `uploaded` object keys on the loopback emulator and calls the **same** ingestion handler with an S3 event envelope. Production uses native S3 `ObjectCreated`; the bridge is local-only and must not be deployed as an AWS worker. Start the existing dispatcher separately if you want n8n Workflow B/C to advance the batch beyond ingestion; the UI itself never sends email. Keep M6 mock-only delivery defaults for local demos.
+
+```sh
+make web-test       # Contract/unit checks
+make web-e2e        # Playwright Chromium UI flows with mocked API/S3 for determinism
+make web-lint
+make web-typecheck
+make web-build
+```
+
+Install Chromium once with `cd apps/web && npx playwright install chromium`. A real browser-to-LocalStack upload and sanitized screenshots are described in [frontend evidence](docs/frontend-evidence.md). The upload API intentionally has no end-user authentication or rate limit; all M7 endpoints and containers are loopback-only. CORS restricts browser origins but is **not** authentication. Do not expose this setup publicly without the M8 security design.
 

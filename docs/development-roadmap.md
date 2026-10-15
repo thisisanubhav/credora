@@ -214,7 +214,7 @@ M6 implementation checkpoint (2026-10-15): Workflow C, signed completion-event r
 **Implementation scope**
 
 - Next.js/TypeScript/Tailwind upload page with accessible file picker/drop zone, client-side advisory validation, direct S3 POST, progress, batch reference, and clear errors.
-- Optional batch-status polling only if ENH-01 is approved and does not expand scope.
+- Batch-status and paged row-error polling using the existing M3 endpoints; M7 request explicitly includes these.
 
 **Files to create/modify**
 
@@ -234,6 +234,8 @@ M6 implementation checkpoint (2026-10-15): Workflow C, signed completion-event r
 **Dependencies:** M3 contracts; an emulator/fake upload target.
 
 **Definition of done:** A fresh local run uploads a fixture and displays its batch reference; production build/lint/typecheck pass.
+
+M7 implementation checkpoint (2026-10-15): the Next.js 16/TypeScript/Tailwind page uses the existing presigned POST and batch/error contracts, with restrictive local API/S3 CORS and a local-only object-created bridge. Playwright covers file validation, direct transfer, bounded polling, row-error pagination, retry/idempotency, accessibility basics, and mobile layout. A real browser upload to LocalStack produced a persisted partial batch. This does not constitute public deployment; the anonymous loopback API needs authentication and abuse controls before external exposure. The local worker is an emulator bridge, not an additional production service. Evidence and limitations are in [frontend evidence](frontend-evidence.md). M8 remains unstarted.
 
 ## M8 - AWS infrastructure configuration
 
