@@ -1,6 +1,6 @@
 COMPOSE = docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml
 
-.PHONY: init check-env config up down logs status smoke db-upgrade db-status db-role db-connect db-test lint typecheck s3-init api ingestion-test ingestion-e2e
+.PHONY: init check-env config up down logs status smoke db-upgrade db-status db-role db-connect db-test lint typecheck s3-init api ingestion-test ingestion-e2e discovery-test discovery-import discovery-run
 
 init:
 	python3 scripts/local_env.py init
@@ -54,6 +54,17 @@ ingestion-test: check-env
 
 ingestion-e2e: check-env
 	uv run --frozen --env-file .env python -m scripts.ingestion_e2e
+
+discovery-test: check-env
+	uv run --frozen --env-file .env python -m scripts.db_admin discovery-test-database
+	uv run --frozen --env-file .env pytest tests/discovery
+
+discovery-import: check-env
+	docker cp workflows/discovery.json $$(docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml ps -q n8n):/tmp/discovery.json
+	$(COMPOSE) exec -T n8n n8n import:workflow --input=/tmp/discovery.json
+
+discovery-run: check-env
+	@set -e; $(COMPOSE) stop n8n; trap '$(COMPOSE) up -d --wait --wait-timeout 180 n8n' EXIT; $(COMPOSE) run --rm --no-deps n8n execute --id=loanDiscoveryM4
 
 lint:
 	uv run --frozen ruff check apps services scripts tests database/migrations

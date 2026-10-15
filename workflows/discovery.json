@@ -1,0 +1,185 @@
+{
+  "id": "loanDiscoveryM4",
+  "name": "Workflow A - Loan Product Discovery",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 80]
+    },
+    {
+      "parameters": {
+        "rule": {"interval": [{"field": "hours", "hoursInterval": 24}]}
+      },
+      "id": "daily-schedule",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://discovery:8001/discovery/runs",
+        "options": {"timeout": 30000}
+      },
+      "id": "start-run",
+      "name": "Start Discovery Run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const run = $input.first().json; return run.source_keys.map(source_key => ({ json: { run_id: run.run_id, source_key } }));"
+      },
+      "id": "source-config",
+      "name": "Source Configuration",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://discovery:8001/discovery/fetch",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {"timeout": 90000}
+      },
+      "id": "fetch-source",
+      "name": "Fetch Official Source",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://discovery:8001/discovery/extract",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {"timeout": 30000}
+      },
+      "id": "extract-product",
+      "name": "Extract Deterministic Criteria",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{"id": "needs-llm", "leftValue": "={{ $json.needs_llm === true && $json.status === 'ok' }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true"}}],
+          "combinator": "and"
+        }
+      },
+      "id": "gemini-decision",
+      "name": "Needs Gemini?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1100, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://discovery:8001/discovery/gemini",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {"timeout": 60000}
+      },
+      "id": "gemini-extract",
+      "name": "Gemini Qualitative Extraction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 80]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://discovery:8001/discovery/validate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {"timeout": 30000}
+      },
+      "id": "validate-evidence",
+      "name": "Validate Source Evidence",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://discovery:8001/discovery/persist",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {"timeout": 30000}
+      },
+      "id": "persist-version",
+      "name": "Persist Product Version",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://discovery:8001/discovery/record",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {"timeout": 30000}
+      },
+      "id": "record-outcome",
+      "name": "Record Source Outcome",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1980, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(item => item.json); const final = rows.find(row => row.run_status !== 'running'); return [{ json: { run_id: rows[0]?.run_id, run_status: final?.run_status ?? 'running', sources: rows.map(row => ({ source_key: row.source_key, outcome: row.outcome, product_id: row.product_id, version: row.version, verification_status: row.verification_status, llm_status: row.llm_status, error_code: row.error_code })) } }];"
+      },
+      "id": "execution-summary",
+      "name": "Execution Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, 180]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {"main": [[{"node": "Start Discovery Run", "type": "main", "index": 0}]]},
+    "Daily Schedule": {"main": [[{"node": "Start Discovery Run", "type": "main", "index": 0}]]},
+    "Start Discovery Run": {"main": [[{"node": "Source Configuration", "type": "main", "index": 0}]]},
+    "Source Configuration": {"main": [[{"node": "Fetch Official Source", "type": "main", "index": 0}]]},
+    "Fetch Official Source": {"main": [[{"node": "Extract Deterministic Criteria", "type": "main", "index": 0}]]},
+    "Extract Deterministic Criteria": {"main": [[{"node": "Needs Gemini?", "type": "main", "index": 0}]]},
+    "Needs Gemini?": {"main": [
+      [{"node": "Gemini Qualitative Extraction", "type": "main", "index": 0}],
+      [{"node": "Validate Source Evidence", "type": "main", "index": 0}]
+    ]},
+    "Gemini Qualitative Extraction": {"main": [[{"node": "Validate Source Evidence", "type": "main", "index": 0}]]},
+    "Validate Source Evidence": {"main": [[{"node": "Persist Product Version", "type": "main", "index": 0}]]},
+    "Persist Product Version": {"main": [[{"node": "Record Source Outcome", "type": "main", "index": 0}]]},
+    "Record Source Outcome": {"main": [[{"node": "Execution Summary", "type": "main", "index": 0}]]}
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  },
+  "pinData": {},
+  "tags": []
+}

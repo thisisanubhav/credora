@@ -1,0 +1,10 @@
+*
+!pyproject.toml
+!uv.lock
+!apps
+!apps/**
+!services
+!services/**
+!infrastructure
+!infrastructure/discovery
+!infrastructure/discovery/Dockerfile

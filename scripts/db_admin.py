@@ -80,10 +80,12 @@ def runtime_role() -> None:
     print("Runtime role configured without DDL or DELETE privileges (credentials hidden).")
 
 
-def test_database(*, ingestion: bool = False) -> None:
+def test_database(*, ingestion: bool = False, discovery: bool = False) -> None:
     name = os.environ["TEST_DB_NAME"]
     if ingestion:
         name = name.removesuffix("_test") + "_ingestion_test"
+    if discovery:
+        name = name.removesuffix("_test") + "_discovery_test"
     if not name.endswith("_test") or name in {os.environ["POSTGRES_DB"], os.environ["N8N_DB_NAME"]}:
         raise ValueError("refusing unsafe test database name")
     with admin_connection("postgres", autocommit=True) as conn, conn.cursor() as cursor:
@@ -151,16 +153,18 @@ if __name__ == "__main__":
         "runtime-role",
         "test-database",
         "ingestion-test-database",
+        "discovery-test-database",
         "check",
         "rotate-admin",
     }:
         raise SystemExit(
-            "usage: python -m scripts.db_admin {runtime-role|test-database|ingestion-test-database|check|rotate-admin}"
+            "usage: python -m scripts.db_admin {runtime-role|test-database|ingestion-test-database|discovery-test-database|check|rotate-admin}"
         )
     {
         "runtime-role": runtime_role,
         "test-database": test_database,
         "ingestion-test-database": lambda: test_database(ingestion=True),
+        "discovery-test-database": lambda: test_database(discovery=True),
         "check": check_connection,
         "rotate-admin": rotate_local_admin,
     }[sys.argv[1]]()
