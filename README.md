@@ -2,7 +2,7 @@
 
 An event-driven platform that ingests CSV batches, discovers personal-loan products, evaluates eligibility, and sends test notifications through workflows orchestrated by self-hosted n8n.
 
-> **Current phase:** M1 local infrastructure. PostgreSQL and a self-hosted n8n instance are configured; application services, workflows, AWS resources, and paid integrations are not implemented or provisioned.
+> **Current phase:** M2 database foundation. Local PostgreSQL and n8n are running; the application schema, migrations, and integrity tests are implemented. API endpoints, ingestion, workflows, frontend, AWS resources, and paid integrations are not implemented or provisioned.
 
 ## Planned flow
 
@@ -70,7 +70,8 @@ This is a modular monorepo, not a set of independently deployed microservices. `
 ### Prerequisites
 
 - Docker Engine/Desktop with Compose v2 or newer, running locally. M1 was verified with Docker Engine 29.4.0 and Compose 5.1.2.
-- Python 3.9+ for the standard-library-only environment and smoke scripts. Application work in M2+ requires Python 3.12+; `.python-version` selects 3.12. On this host, `python3` resolves to 3.9.6, while `python3.12` is installed separately (3.12.14).
+- Python 3.9+ for the standard-library-only environment and smoke scripts. M2 Python models and tests require Python 3.12+; `.python-version` selects 3.12. On this host, `python3` resolves to 3.9.6, while `python3.12` is installed separately (3.12.14).
+- `uv` for the locked M2 Python dependencies. Run `uv sync --frozen` once after checkout; `uv run --frozen` in the Make targets then uses the local environment.
 - `make` for the root commands. Equivalent Docker Compose commands are shown below.
 - Node is not needed to start M1. Frontend work in M7 uses Node 24 LTS, selected in `.nvmrc`. The current host's Node 25 is end of life and should be switched before M7.
 
@@ -92,8 +93,10 @@ make smoke      # Check both databases, authentication, HTTP, networking, volume
 | Variable | Purpose |
 |---|---|
 | `COMPOSE_PROJECT_NAME` | Names this checkout's Compose containers, network, and volumes. Change it if another checkout uses the same name. |
-| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Initial application database and local bootstrap administrator. M2 introduces narrower runtime roles. |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Application database and local bootstrap/migration administrator. Do not use this role in application runtime. |
 | `POSTGRES_PORT` | Host-side PostgreSQL port on `127.0.0.1`; container port is always 5432. |
+| `APP_DB_USER`, `APP_DB_PASSWORD` | Restricted application DML login, provisioned by `make db-role`; not the n8n internal login. |
+| `TEST_DB_NAME` | Dedicated migration/integrity test database, required to end in `_test`. |
 | `N8N_DB_NAME`, `N8N_DB_USER`, `N8N_DB_PASSWORD` | Separate n8n internal database and login, created only on first PostgreSQL volume initialization. |
 | `N8N_HOST`, `N8N_PORT`, `N8N_PROTOCOL`, `N8N_WEBHOOK_URL` | Loopback editor URL and local webhook base URL; the validation script keeps them consistent. |
 | `N8N_ENCRYPTION_KEY` | Stable key for n8n credential encryption. Never commit or rotate casually. |
@@ -131,5 +134,26 @@ docker compose --project-directory . --env-file .env -f infrastructure/docker-co
 | Changed encryption key after first run | Restore the original ignored `.env` value. Regenerating the key does not decrypt stored credentials. |
 | Changed database name/password after first run | Restore the original `.env`, or deliberately reinitialize the project's volumes after backing up wanted data. The init script is not a migration tool. |
 
-The next milestone is **M2: database models and migrations**. See the [roadmap](docs/development-roadmap.md). M1 creates no business tables.
+### Database foundation (M2)
+
+For an existing M1 checkout, run `python3 scripts/local_env.py extend` once. It appends only the new M2 settings and a random runtime password to the ignored `.env`; it does not overwrite the three existing local secrets. New checkouts receive all settings from `make init`. Then, from the repository root:
+
+```sh
+uv sync --frozen
+make up
+make db-upgrade   # Apply Alembic revisions to the application database as bootstrap owner
+make db-role      # Create/refresh restricted application runtime permissions
+make db-connect   # Verify runtime connectivity and absence of DDL/DELETE privileges
+make db-status    # Display the applied Alembic revision
+make db-test      # Create/validate dedicated *_test DB; round-trip migrations there
+make lint
+make typecheck
+make smoke        # Recheck the M1 containers and database isolation
+```
+
+`make db-test` downgrades and rebuilds schema **only** in `TEST_DB_NAME`; it never targets `POSTGRES_DB` or the n8n database. It removes previous test data. The application migration is non-destructive on upgrade; do not run `alembic downgrade base` on a database containing wanted data. `make db-role` is idempotent and should be rerun after future migrations. It grants DML without DDL/DELETE and permits product lifecycle metadata updates but not edits to historical eligibility rules. Database and test credentials remain only in ignored `.env` (mode `0600`); Alembic's INI contains no URL.
+
+The schema has nine application tables: the eight planned entities plus `notification_matches`, a join table that enforces match-to-notification foreign keys and at-most-one notification reservation per match. Product versions retain source evidence and a rule document. Unknown criteria are explicit and cannot be marked verified as an empty document. `matches.status = 'potential'` is **not** approval. See [M2 design decisions and query/index examples](docs/database-design.md#m2-implementation-review-2026-10-15). No real user or loan data is seeded.
+
+The next implementation milestone is **M3: CSV ingestion**. M2 does not parse CSV, crawl sites, match users, or send email.
 
