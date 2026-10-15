@@ -177,7 +177,7 @@ make ingestion-e2e      # One-command presigned upload, worker, outbox, replay c
 
 In production, S3 `ObjectCreated` invokes `services.ingestion.worker.lambda_handler`. Locally, `make ingestion-e2e` uploads through the signed POST to LocalStack and synthesizes that AWS event envelope into the same handler. LocalStack does **not** automatically invoke a Lambda. The worker validates bucket/key/batch/ETag, streams UTF-8 CSV in configurable insert chunks, commits accepted rows with a stable `upload_batch.ready.v1` outbox event, and never contacts n8n. Valid rows are retained when other rows fail validation. An all-invalid or malformed file creates no matching event. Batch states are `uploaded → processing → processed | processed_with_errors | rejected`; transient failures become `failed` and can retry. Stale processing leases can be reclaimed after `INGESTION_LEASE_SECONDS`; a processing token fences older attempts. Duplicate S3 events return without inserting more users or events.
 
-The [CSV contract](docs/csv-contract.md) specifies exact sample headers, validation and safe row-error handling. Every rejected row number and its error codes are retained in `upload_row_errors`; raw invalid rows are not copied to another personal-data store. `name` is ignored. `income_currency` is nullable because the sample specifies no currency. Unknown employment labels preserve source text and normalize to `other`, which must fail closed for automated eligibility. The worker holds one database transaction while parsing each bounded file; the default 10 MB limit and a 15-minute lease suit assignment-scale files, but sustained larger loads require measuring transaction duration and likely a chunk/checkpoint redesign. No webhook dispatcher exists yet; M5 will atomically claim pending outbox rows with `FOR UPDATE SKIP LOCKED` and deliver only the batch ID to n8n with authentication, retry, and failure recovery.
+The [CSV contract](docs/csv-contract.md) specifies exact sample headers, validation and safe row-error handling. Every rejected row number and its error codes are retained in `upload_row_errors`; raw invalid rows are not copied to another personal-data store. `name` is ignored. `income_currency` is nullable because the sample specifies no currency. Unknown employment labels preserve source text and normalize to `other`, which must fail closed for automated eligibility. The worker holds one database transaction while parsing each bounded file; the default 10 MB limit and a 15-minute lease suit assignment-scale files, but sustained larger loads require measuring transaction duration and likely a chunk/checkpoint redesign. The M5/M6 dispatcher now atomically claims pending outbox rows with `FOR UPDATE SKIP LOCKED` and delivers signed batch events to n8n with retries and failure recovery.
 
 M3 settings in `.env`: `LOCALSTACK_PORT` (loopback emulator), `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (local dummy only), `AWS_DEFAULT_REGION`, `S3_ENDPOINT_URL`, `S3_BUCKET`, `CSV_MAX_BYTES`, `CSV_CHUNK_SIZE`, `UPLOAD_URL_TTL_SECONDS`, and `INGESTION_LEASE_SECONDS`. The S3 bucket has a persistent named volume. `make down` preserves it; `docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml down --volumes` removes **all three** project data volumes and is destructive. Check the Compose project name and back up wanted data first.
 
@@ -215,4 +215,21 @@ make matching-benchmark
 ```
 
 `make matching-dispatch` processes one due outbox event; run `uv run --frozen --env-file .env python -m services.eligibility.dispatcher --watch` for local continuous dispatch/reconciliation. Do not enable `ALLOW_SYNTHETIC_DEMO=1` or expose the HTTP webhook in production. The [matching policy](docs/matching-policy.md), [workflow/recovery guide](docs/matching-workflow.md), and [benchmark](docs/matching-benchmark.md) explain fail-closed decisions, HMAC/replay protection, page receipts, and measured selectivity. M5 never sends an email or claims approval.
+
+### Test-only notification workflow (M6)
+
+Existing checkouts: run `python3 scripts/local_env.py extend-m6` once. Defaults are **mock-only**, with a non-deliverable placeholder inbox. No CSV address is ever used as a delivery recipient. From the repository root:
+
+```sh
+make up
+make db-upgrade
+make db-role
+make notification-test
+make notification-import
+docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml exec -T n8n n8n publish:workflow --id=loanNotificationsM6
+docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml restart n8n
+make notification-e2e
+```
+
+The same dispatcher now routes Workflow B completion events to Workflow C. `make notification-e2e` performs real local ingestion and both n8n workflows; its final notification acceptance is mocked, so **no email is sent**. It proves one message group for a user with one synthetic match, one for a user with two, none for an unmatched user, and duplicate-event safety. See [notification policy](docs/notification-policy.md), [Workflow C/SES setup](docs/notification-workflow.md), and [sanitized evidence](docs/notification-evidence.md). To attempt a real SES send, a controlled verified inbox and sender, n8n AWS credential, explicit `.env` switches, and an inbox receipt check are required. SES credentials/identities were unavailable for M6; no receipt is claimed. The installed SES node sends HTML here, while the helper also generates plain text; its `email.send` operation does not produce multipart alternatives.
 

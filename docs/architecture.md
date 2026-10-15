@@ -25,7 +25,8 @@ flowchart LR
     OUT -.->|M5 dispatcher: signed batch event| WH[n8n matching webhook]
     WH --> WB[Workflow B<br/>Eligibility matching]
     WB -->|SQL candidates and idempotent matches| RDS
-    WB -->|Execute after success| WC[Workflow C<br/>Notifications]
+    WB -->|Commit matching.completed.v1| OUT
+    OUT -.->|M6 dispatcher: signed completion event| WC[Workflow C<br/>Notifications]
     WC -->|AWS SES node| SES[AWS SES]
     SES --> TEST[Test inbox aliases only]
 
@@ -224,6 +225,8 @@ The shared secret lives in AWS Secrets Manager/SSM for Lambda and in n8n’s enc
 The assignment does not require end-user authentication. Therefore the initial UI/API is local or access-restricted for demonstration. CORS is not authentication, and a public anonymous presign Function URL would create an upload-abuse/cost risk even with tight POST policies and reserved concurrency. Before any public deployment, choose one explicit control: IAM-authenticated Function URL with an appropriate browser identity mechanism, or API Gateway with real user authentication (for example Cognito). API keys embedded in the frontend are not accepted as authentication. This decision is intentionally deferred because public deployment itself is optional.
 
 ## Scalability, bottlenecks, and mitigations
+
+M6 local implementation: the dispatcher routes both upload-ready and matching-completed events to distinct signed localhost n8n webhooks. Workflow C acknowledges only after a notification execution is durably created, then loops through grouped users, renders source-grounded content, enforces a test-only recipient, branches to a local mock or the actual AWS SES node, and records the outcome. `notification_logs` has a distinct `mocked` state so local acceptance cannot be mistaken for SES acceptance. An interrupted SES attempt is ambiguous and is not automatically retried. See [notification policy](notification-policy.md) and [Workflow C guide](notification-workflow.md). The earlier diagram is a target-state cloud architecture, not a claim of deployed AWS infrastructure.
 
 | Concern | Likely effect | Initial mitigation | Scale trigger / later option |
 |---|---|---|---|

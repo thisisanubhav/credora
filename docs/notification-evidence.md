@@ -1,0 +1,7 @@
+# Sanitized M6 local evidence — 2026-10-15
+
+**PASS:** Workflow C JSON imported and published in running n8n 2.43.5. The installed AWS SES node was inspected locally: `n8n-nodes-base.awsSes` version 1 supports `email.send`, `toAddresses`, `fromEmail`, `subject`, `body`, and an HTML switch. It does not expose a multipart text+HTML send in that operation. The node exists in the imported graph, but the local execution took the mock branch.
+
+**PASS:** After reimporting the final HTML-configured workflow, `make notification-e2e` used the real local API→signed S3 upload→worker→PostgreSQL outbox→signed dispatcher→n8n Workflow B→completion outbox→signed dispatcher→n8n Workflow C route. Batch `12c62c07-0e1f-4bf8-aa46-6e85a2a45fd1`: three accepted synthetic users; one had one match, one had two, one had none. Matching execution `0f084b4a-b17d-4d6b-870d-5cb6e7af9eea`; notification execution `dcda0b29-0eb4-4c06-b00b-c9c85c32e16b`. Two `mocked` notification logs linked all three matches, none had an SES message ID, and a signed completion-event replay added zero logs. CSV addresses were not recipients.
+
+**BLOCKED:** No configured AWS SES credential, verified sender, or controlled real test inbox was supplied. Therefore no SES request, SES message ID, received email, or real-delivery evidence exists. The local `.invalid` inbox is a non-deliverable placeholder. The final assignment video still needs a user-controlled verified SES setup and independently observed inbox receipt.

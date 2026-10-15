@@ -205,6 +205,8 @@ The files below are planned paths, not evidence that they already exist.
 
 **Definition of done:** Captured local email is correct; one controlled SES sandbox email can be demonstrated when credentials are deliberately configured; logs contain no secret/full body.
 
+M6 implementation checkpoint (2026-10-15): Workflow C, signed completion-event routing, recipient-only test mode, local mock acceptance, and notification tracking are implemented and locally demonstrated. Actual AWS SES delivery and received-inbox evidence remain blocked until verified owner-controlled identities and credentials are supplied. The installed n8n SES send node cannot emit both HTML and plain-text alternatives in one `email.send` call; resolve that limitation before claiming multipart delivery. M7 remains unstarted.
+
 ## M7 - Frontend upload interface
 
 **Objective:** Deliver the minimal, responsive primary interaction that starts the pipeline safely.
