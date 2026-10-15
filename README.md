@@ -70,7 +70,7 @@ This is a modular monorepo, not a set of independently deployed microservices. `
 ### Prerequisites
 
 - Docker Engine/Desktop with Compose v2 or newer, running locally. M1 was verified with Docker Engine 29.4.0 and Compose 5.1.2.
-- Python 3.9+ for the standard-library-only environment and smoke scripts. Application work in M2+ requires Python 3.12+; `.python-version` selects 3.12. The current host's Python 3.9.6 can run M1 but cannot run the planned application.
+- Python 3.9+ for the standard-library-only environment and smoke scripts. Application work in M2+ requires Python 3.12+; `.python-version` selects 3.12. On this host, `python3` resolves to 3.9.6, while `python3.12` is installed separately (3.12.14).
 - `make` for the root commands. Equivalent Docker Compose commands are shown below.
 - Node is not needed to start M1. Frontend work in M7 uses Node 24 LTS, selected in `.nvmrc`. The current host's Node 25 is end of life and should be switched before M7.
 
