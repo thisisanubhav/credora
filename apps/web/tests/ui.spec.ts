@@ -131,6 +131,45 @@ test("backend failure is announced and rapid duplicate clicks issue one presign"
   await page.goto("/");
   await choose(page);
   await page.getByRole("button", { name: "Upload CSV" }).dblclick();
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "The request could not be completed." })).toBeVisible();
   expect(calls).toBe(1);
+});
+
+test("drag-drop works with keyboard-friendly controls and reduced motion", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  await page.locator(".border-dashed").evaluate((target, content) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([content], "dropped.csv", { type: "text/csv" }));
+    target.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: transfer }));
+  }, CSV);
+  await expect(page.getByTestId("selected-file")).toContainText("dropped.csv");
+  await expect(page.getByRole("button", { name: "Upload CSV" })).toBeEnabled();
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe("auto");
+});
+
+test("interrupted status polling can recover and reload by batch URL", async ({ page }) => {
+  await mockPresign(page);
+  await page.route(STORAGE, (route) => route.fulfill({ status: 204, headers: {
+    "access-control-allow-origin": "http://127.0.0.1:3107",
+  } }));
+  let checks = 0;
+  await page.route(`${API}/uploads/11111111-1111-4111-8111-111111111111`, (route) => {
+    checks += 1;
+    if (checks <= 3) return route.fulfill({ status: 503, body: "temporarily unavailable" });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      batch_id: "11111111-1111-4111-8111-111111111111", status: "processed",
+      total_rows: 1, accepted_rows: 1, rejected_rows: 0, errors: {},
+    }) });
+  });
+  await page.goto("/");
+  await choose(page);
+  await page.getByRole("button", { name: "Upload CSV" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "The request could not be completed." })).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: "Refresh status" }).click();
+  await expect(page.getByRole("status")).toContainText("Ingestion complete");
+  expect(page.url()).toContain("?batch=11111111-1111-4111-8111-111111111111");
+  await page.reload();
+  await expect(page.getByRole("status")).toContainText("Ingestion complete");
+  expect(checks).toBeGreaterThanOrEqual(5);
 });
