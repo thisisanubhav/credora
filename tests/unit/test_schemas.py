@@ -5,7 +5,6 @@ from pydantic import ValidationError
 
 from services.common.schemas import EligibilityDocument
 
-
 EVIDENCE = {"quote": "Minimum monthly income: 1,000 USD", "source_url": "https://fixture.invalid/loan"}
 RULE = {
     "field": "monthly_income", "operator": "gte", "value": "1000.00",
