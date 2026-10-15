@@ -6,6 +6,7 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
+
 from services.common.db import database_url, make_engine
 from services.common.models import Base
 
