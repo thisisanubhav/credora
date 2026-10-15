@@ -1,0 +1,32 @@
+{
+  "name": "loan-eligibility-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1 --port 3107",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1 --port 3107",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "playwright test tests/unit.spec.ts",
+    "test:e2e": "playwright test tests/ui.spec.ts"
+  },
+  "dependencies": {
+    "next": "16.4.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "25.2.2",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "eslint": "9.39.2",
+    "eslint-config-next": "16.4.1",
+    "postcss": "8.5.6",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3"
+  },
+  "engines": {"node": ">=22 <26"}
+}
