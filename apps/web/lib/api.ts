@@ -28,11 +28,11 @@ async function jsonRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function requestUpload(file: File, idempotencyKey: string): Promise<PresignResponse> {
+export function requestUpload(file: File, idempotencyKey: string, demoMode = false): Promise<PresignResponse> {
   return jsonRequest<PresignResponse>("/uploads", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
-    body: JSON.stringify({ filename: file.name, size_bytes: file.size, content_type: "text/csv" }),
+    body: JSON.stringify({ filename: file.name, size_bytes: file.size, content_type: "text/csv", demo_mode: demoMode }),
   });
 }
 

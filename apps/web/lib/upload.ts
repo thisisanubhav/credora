@@ -4,6 +4,12 @@ export class StorageError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
+/** Content-bound retry identity: metadata alone can collide for different CSV bytes. */
+export async function fileFingerprint(file: File): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (part) => part.toString(16).padStart(2, "0")).join("");
+}
+
 export function uploadToStorage(file: File, policy: PresignResponse["upload"], onProgress: (percent: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     let url: URL;

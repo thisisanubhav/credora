@@ -6,19 +6,16 @@ import {
   readableError, STATUS_LABEL, TERMINAL_STATUSES, validateFile,
   type BatchResponse, type RowError,
 } from "@/lib/contracts";
-import { StorageError, uploadToStorage } from "@/lib/upload";
+import { StorageError, fileFingerprint, uploadToStorage } from "@/lib/upload";
 
 const MAX_BYTES = Number(process.env.NEXT_PUBLIC_CSV_MAX_BYTES ?? 10_000_000);
 const PAGE_SIZE = 20;
 const MAX_POLLS = 90;
 const PENDING_KEY = "loan-upload-pending-v1";
+const DEMO_AVAILABLE = process.env.NEXT_PUBLIC_ENABLE_DEMO_UPLOAD === "1";
 
 type Pending = { fingerprint: string; key: string; batchId?: string };
 type Phase = "idle" | "ready" | "requesting" | "uploading" | "waiting" | "complete" | "error";
-
-function fingerprint(file: File) {
-  return `${file.name}:${file.size}:${file.lastModified}`;
-}
 
 function readPending(): Pending | null {
   try {
@@ -40,6 +37,7 @@ export function UploadConsole() {
   const inputRef = useRef<HTMLInputElement>(null);
   const busyRef = useRef(false);
   const [file, setFile] = useState<File | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -118,6 +116,7 @@ export function UploadConsole() {
   }, [batchId, batch?.rejected_rows, offset]);
 
   const choose = useCallback((next: File | null) => {
+    if (next) window.history.replaceState(null, "", window.location.pathname);
     setFile(next);
     setBatch(null);
     setBatchId(null);
@@ -140,11 +139,12 @@ export function UploadConsole() {
     setProgress(0);
     setPhase("requesting");
     try {
+      const contentFingerprint = `${file.name}:${file.size}:${await fileFingerprint(file)}:${demoMode}`;
       const prior = readPending();
-      const current: Pending = prior?.fingerprint === fingerprint(file)
-        ? prior : { fingerprint: fingerprint(file), key: crypto.randomUUID() };
+      const current: Pending = prior?.fingerprint === contentFingerprint
+        ? prior : { fingerprint: contentFingerprint, key: crypto.randomUUID() };
       savePending(current);
-      const presign = await requestUpload(file, current.key);
+      const presign = await requestUpload(file, current.key, demoMode);
       const updated = { ...current, batchId: presign.batch_id };
       savePending(updated);
       setBatchId(presign.batch_id);
@@ -232,6 +232,11 @@ export function UploadConsole() {
           {file && <div className="mt-4 flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm" data-testid="selected-file">
             <span className="min-w-0 truncate font-medium text-slate-800">{file.name}</span><span className="shrink-0 text-slate-500">{fileSize(file.size)}</span>
           </div>}
+
+          {DEMO_AVAILABLE && <label className="mt-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <input type="checkbox" checked={demoMode} disabled={active} onChange={(event) => setDemoMode(event.target.checked)} className="mt-1" />
+            <span>Local synthetic demonstration only. Results are not real lender offers; notifications remain mock-only.</span>
+          </label>}
 
           {message && <div role="alert" className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">{message}</div>}
 
