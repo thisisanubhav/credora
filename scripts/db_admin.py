@@ -9,10 +9,9 @@ import sys
 
 import psycopg
 from psycopg import sql
-
-from services.common.db import database_url
-from services.common.db import make_engine
 from sqlalchemy import text
+
+from services.common.db import make_engine
 
 
 def admin_connection(database: str, *, autocommit: bool = False) -> psycopg.Connection:
