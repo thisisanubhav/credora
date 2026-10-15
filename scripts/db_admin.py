@@ -90,6 +90,10 @@ def check_connection() -> None:
                 != os.environ["POSTGRES_DB"]
             ):
                 raise ValueError("connected to an unexpected database")
+            if conn.execute(text("SELECT has_schema_privilege(current_user, 'public', 'CREATE')")).scalar_one():
+                raise ValueError("runtime role unexpectedly has schema DDL privileges")
+            if conn.execute(text("SELECT has_table_privilege(current_user, 'users', 'DELETE')")).scalar_one():
+                raise ValueError("runtime role unexpectedly has DELETE privileges")
         print("Runtime role connected to the application database (credentials hidden).")
     finally:
         engine.dispose()
