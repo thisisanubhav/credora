@@ -5,7 +5,7 @@
 The recommended architecture is a good fit with four refinements:
 
 1. The upload API returns a **presigned S3 POST policy**, not a generic proxy upload. A POST policy can restrict key prefix, content type, and size while the browser streams directly to S3.
-2. The ingestion Lambda commits the batch before it calls n8n and records a **transactional outbox event** in the same database transaction. This closes the “database commit succeeded but webhook failed” gap.
+2. The ingestion Lambda commits accepted users, batch completion, and a **transactional outbox event** in the same database transaction. It does **not** call n8n. An M5 dispatcher will deliver pending events after commit. This closes the “database commit succeeded but webhook failed” gap.
 3. n8n is the explicit business-process coordinator. Its PostgreSQL nodes perform set-based pre-filtering, its workflow nodes execute deterministic/ambiguous checks, and Workflow C is called only after Workflow B completes successfully.
 4. A cloud end-to-end deployment places the Dockerized n8n host in the same VPC as private RDS. Local development uses local PostgreSQL and n8n. A local n8n instance cannot safely query private RDS merely because Lambda can reach its webhook; that boundary must not be hand-waved.
 
@@ -21,7 +21,8 @@ flowchart LR
     WEB -->|3. Direct upload| S3[(S3 upload bucket)]
     S3 -->|4. ObjectCreated| ING[Python ingestion Lambda]
     ING -->|5. Validate and bulk insert| RDS[(RDS PostgreSQL)]
-    ING -->|6. Signed batch event after commit| WH[n8n matching webhook]
+    ING -->|6. Pending matching event| OUT[(PostgreSQL outbox)]
+    OUT -.->|M5 dispatcher: signed batch event| WH[n8n matching webhook]
     WH --> WB[Workflow B<br/>Eligibility matching]
     WB -->|SQL candidates and idempotent matches| RDS
     WB -->|Execute after success| WC[Workflow C<br/>Notifications]
@@ -75,7 +76,7 @@ flowchart TB
     N8N --> SES --> Inbox
 ```
 
-For local development, the browser, API, n8n, and PostgreSQL run locally; S3/Lambda/SES/Gemini are represented by contract fakes or explicitly enabled emulators. A real cloud deployment is optional and is never required to begin development.
+For M3 local development, FastAPI runs on loopback, PostgreSQL and n8n run in Compose, and LocalStack 4.11.0 emulates S3 on loopback. The E2E command feeds a real S3-compatible presigned POST to LocalStack, then invokes the same Lambda handler with a synthesized S3 `ObjectCreated` envelope. Automatic S3→Lambda delivery, AWS SES, and Gemini are not running locally. A real cloud deployment is optional.
 
 ## Component responsibilities
 
@@ -84,7 +85,7 @@ For local development, the browser, API, n8n, and PostgreSQL run locally; S3/Lam
 | Next.js UI | Choose CSV, obtain presigned policy, upload, display batch reference and safe errors. | Parsing users, matching, or possessing AWS credentials. |
 | Presign API | Generate UUID batch key and a short-lived constrained S3 POST; apply CORS/rate limit. | Receiving CSV bytes or running business rules. |
 | S3 | Durable upload handoff and event source; server-side encryption and lifecycle policy. | Data validation. |
-| Ingestion Lambda | Verify event/object, parse bounded CSV, validate rows, bulk insert atomically, create outbox event, invoke n8n. | Loan eligibility decisions. |
+| Ingestion Lambda | Verify event/object, parse bounded CSV, validate rows, bulk insert atomically, create outbox event. | Loan eligibility decisions or direct n8n delivery. |
 | PostgreSQL/RDS | System of record, constraints, batch/outbox state, efficient candidate selection. | Autonomous workflow scheduling. |
 | n8n Workflow A | Schedule, crawl orchestration, source extraction, schema validation, product upsert. | Inventing missing source criteria. |
 | n8n Workflow B | Webhook verification, batch-scoped matching stages, metrics, match persistence, call Workflow C. | Re-parsing uploaded CSV or emailing sample addresses. |
@@ -112,15 +113,8 @@ sequenceDiagram
     S3-->>L: ObjectCreated event (at-least-once)
     L->>S3: HEAD then streamed GET
     L->>DB: BEGIN; insert/lock batch; bulk insert users; insert outbox; COMMIT
-    L->>N: POST canonical JSON + HMAC headers
-    alt accepted or already processed
-      N-->>L: 202/200 with execution reference
-      L->>DB: mark outbox delivered
-    else timeout, 429, or 5xx
-      L-->>L: bounded retry with jitter
-      L->>DB: retain pending outbox attempt/error
-      Note over S3,L: Lambda async retry; eventual DLQ in production template
-    end
+    Note over L,DB: M3 ends at the committed pending outbox event
+    DB-->>N: M5 dispatcher will POST signed batch envelope
     N->>DB: claim batch event idempotently
     N->>DB: set-based candidate query
     N->>N: deterministic and rare ambiguity stages
@@ -172,7 +166,7 @@ The single-host n8n deployment is appropriate for an assignment and modest load.
 
 ### Webhook authentication and replay protection
 
-The Lambda sends a small envelope; it never sends the CSV or user records:
+The future M5 outbox dispatcher sends a small envelope; it never sends the CSV or user records:
 
 ```json
 {
@@ -191,9 +185,9 @@ The shared secret lives in AWS Secrets Manager/SSM for Lambda and in n8n’s enc
 ### Retries, idempotency, and recovery
 
 - S3 and Lambda delivery are at-least-once. `upload_batches.object_key` is unique; the Lambda locks or upserts the batch and never duplicates its users.
-- The user rows and `workflow_outbox` event commit in one PostgreSQL transaction. n8n is called only after that commit.
-- Network calls use short connect/read timeouts and a small exponential-backoff-with-jitter budget. Lambda treats `200/202/409-already-claimed` as success, retries `429/5xx/timeouts`, and does not retry permanent `4xx` schema/auth failures.
-- If the process dies after n8n accepts but before outbox acknowledgement, the same event is resent. The event claim and match unique constraints make this safe.
+- The user rows and `outbox_events` event commit in one PostgreSQL transaction. M3 does not call n8n; an M5 dispatcher will do so only after that commit.
+- The M5 dispatcher should use short connect/read timeouts and exponential backoff with jitter. It should treat `200/202/409-already-claimed` as success, retry `429/5xx/timeouts`, and quarantine permanent `4xx` schema/auth failures.
+- If the M5 dispatcher dies after n8n accepts but before outbox acknowledgement, the same event is resent. The event claim and match unique constraints make this safe.
 - A lightweight n8n reconciliation schedule queries stale pending outbox rows and re-enters Workflow B. This reuses n8n and PostgreSQL instead of adding Kafka/SNS/SQS to the normal path.
 - The production template may attach an SQS DLQ to the ingestion Lambda. Operators can inspect and redrive after correcting the cause; local development does not require it.
 - Workflow C reserves an idempotency key before SES. A timeout after the SES call is inherently ambiguous because SES and PostgreSQL are not one transaction; record the SES message ID when returned, retry cautiously, and expose ambiguous sends for manual review rather than blindly duplicating mail.
@@ -246,7 +240,7 @@ The assignment does not require end-user authentication. Therefore the initial U
 | Invalid CSV/header | Batch marked `rejected` with summarized error | Fix CSV and upload a new batch; no partial hidden success for file-level errors. |
 | Some invalid rows | Rejection counts and bounded error sample | Proposed policy: valid rows commit and batch becomes `processed_with_errors`; confirm this requirement before implementation. |
 | Database unavailable | Lambda error/metrics; event retry | Idempotent retry; eventual DLQ; batch reconstructed from unique object key. |
-| n8n unreachable | Pending outbox, Lambda error | Bounded retry, Lambda async retry/DLQ, then n8n reconciliation. |
+| n8n unreachable (M5) | Pending outbox remains due | Dispatcher retry/backoff and n8n reconciliation; ingestion completion is unaffected. |
 | Duplicate S3/webhook event | Unique keys/event claim conflict | Return success/already-processed; do not duplicate users or matches. |
 | Crawl blocked/layout changed | HTTP/parser/schema failure and stale-source metric | Keep last verified version but mark freshness; do not overwrite with empty/invented criteria. |
 | Gemini invalid/unsupported output | Schema/evidence validation failure | Retry within cap only for transient/model-format errors; then mark review-required/unmatchable. |

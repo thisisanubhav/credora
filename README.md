@@ -2,14 +2,14 @@
 
 An event-driven platform that ingests CSV batches, discovers personal-loan products, evaluates eligibility, and sends test notifications through workflows orchestrated by self-hosted n8n.
 
-> **Current phase:** M2 database foundation. Local PostgreSQL and n8n are running; the application schema, migrations, and integrity tests are implemented. API endpoints, ingestion, workflows, frontend, AWS resources, and paid integrations are not implemented or provisioned.
+> **Current phase:** M3 CSV ingestion. Local PostgreSQL, n8n, and S3-compatible LocalStack run through Compose. The upload API, streamed worker, batch tracking, and transactional outbox are implemented. Automatic local S3 notifications, n8n workflows, frontend, AWS resources, and paid integrations are not implemented or provisioned.
 
 ## Planned flow
 
 1. A Next.js UI requests a short-lived presigned S3 upload and sends the CSV directly to S3.
 2. An S3 `ObjectCreated` event invokes a Python ingestion Lambda.
 3. The Lambda validates the CSV and atomically persists an upload batch and its users in PostgreSQL.
-4. After commit, the Lambda invokes an authenticated n8n matching webhook with a batch identifier.
+4. A later outbox dispatcher will invoke an authenticated n8n matching webhook with the committed batch identifier. M3 only writes the pending event.
 5. n8n runs set-based SQL pre-filtering, deterministic rules, and only then any necessary bounded LLM checks.
 6. Qualified matches are persisted idempotently; a notification workflow groups new matches by user and sends only to controlled test aliases through AWS SES.
 7. Separately, a scheduled n8n workflow discovers products from an allowlist of public sources, extracts source-grounded criteria with Gemini Flash where useful, validates the JSON deterministically, and upserts versioned products.
@@ -23,6 +23,7 @@ See the [architecture](docs/architecture.md) for diagrams and failure handling.
 - [Database design](docs/database-design.md)
 - [Optimization strategy](docs/optimization-strategy.md)
 - [Development roadmap](docs/development-roadmap.md)
+- [CSV contract and sample findings](docs/csv-contract.md)
 
 ## Proposed repository layout
 
@@ -44,7 +45,7 @@ See the [architecture](docs/architecture.md) for diagrams and failure handling.
 │   └── seeds/                  # Local-only deterministic fixtures
 ├── infrastructure/
 │   ├── serverless.yml          # AWS declarations; no deployment is performed by default
-│   └── docker-compose.yml      # PostgreSQL and n8n local services
+│   └── docker-compose.yml      # PostgreSQL, n8n, LocalStack S3 emulator
 ├── tests/
 │   ├── unit/
 │   ├── integration/
@@ -155,5 +156,30 @@ make smoke        # Recheck the M1 containers and database isolation
 
 The schema has nine application tables: the eight planned entities plus `notification_matches`, a join table that enforces match-to-notification foreign keys and at-most-one notification reservation per match. Product versions retain source evidence and a rule document. Unknown criteria are explicit and cannot be marked verified as an empty document. `matches.status = 'potential'` is **not** approval. See [M2 design decisions and query/index examples](docs/database-design.md#m2-implementation-review-2026-10-15). No real user or loan data is seeded.
 
-The next implementation milestone is **M3: CSV ingestion**. M2 does not parse CSV, crawl sites, match users, or send email.
+### CSV ingestion (M3)
+
+Existing M2 checkouts should run `python3 scripts/local_env.py extend-m3` once. This appends local S3 emulator and ingestion settings to the ignored `.env`. A fresh `make init` includes them. `test/test` are LocalStack's public emulator-only dummy keys, **not** AWS credentials. Production must use an IAM execution role and omit `S3_ENDPOINT_URL`; never deploy the loopback-only unauthenticated API as a public endpoint.
+
+From the repository root:
+
+```sh
+uv sync --frozen
+make up                 # PostgreSQL, n8n, LocalStack; loopback-only ports
+make db-upgrade         # Additive M3 migration; preserves existing data
+make db-role            # Refresh runtime DML grants after migration
+make s3-init            # Create local S3 bucket idempotently
+make api                # Optional: serve FastAPI on 127.0.0.1:8000
+make ingestion-test     # Real dedicated *_test PostgreSQL + LocalStack
+make ingestion-e2e      # One-command presigned upload, worker, outbox, replay check
+```
+
+`POST /uploads` takes JSON `{"filename":"users.csv","size_bytes":1234,"content_type":"text/csv"}` and an `Idempotency-Key` header (8–128 characters). It creates a batch and returns `batch_id` plus `upload.url` and signed multipart `upload.fields`. POST the CSV directly to that URL with those fields and a `file` part; CSV bytes never traverse FastAPI. Replaying the same key and metadata while the batch is still `uploaded` returns the same batch and a fresh short-lived policy; changed metadata returns 409. `GET /uploads/{batch_id}` gives safe status/counts and the first 100 error examples; `GET /uploads/{batch_id}/errors?offset=0&limit=100` pages through all row errors; `GET /health` returns process liveness. No authentication or rate limiting is implemented, so bind only to loopback and do not expose this API to a network.
+
+In production, S3 `ObjectCreated` invokes `services.ingestion.worker.lambda_handler`. Locally, `make ingestion-e2e` uploads through the signed POST to LocalStack and synthesizes that AWS event envelope into the same handler. LocalStack does **not** automatically invoke a Lambda. The worker validates bucket/key/batch/ETag, streams UTF-8 CSV in configurable insert chunks, commits accepted rows with a stable `upload_batch.ready.v1` outbox event, and never contacts n8n. Valid rows are retained when other rows fail validation. An all-invalid or malformed file creates no matching event. Batch states are `uploaded → processing → processed | processed_with_errors | rejected`; transient failures become `failed` and can retry. Stale processing leases can be reclaimed after `INGESTION_LEASE_SECONDS`; a processing token fences older attempts. Duplicate S3 events return without inserting more users or events.
+
+The [CSV contract](docs/csv-contract.md) specifies exact sample headers, validation and safe row-error handling. Every rejected row number and its error codes are retained in `upload_row_errors`; raw invalid rows are not copied to another personal-data store. `name` is ignored. `income_currency` is nullable because the sample specifies no currency. Unknown employment labels preserve source text and normalize to `other`, which must fail closed for automated eligibility. The worker holds one database transaction while parsing each bounded file; the default 10 MB limit and a 15-minute lease suit assignment-scale files, but sustained larger loads require measuring transaction duration and likely a chunk/checkpoint redesign. No webhook dispatcher exists yet; M5 will atomically claim pending outbox rows with `FOR UPDATE SKIP LOCKED` and deliver only the batch ID to n8n with authentication, retry, and failure recovery.
+
+M3 settings in `.env`: `LOCALSTACK_PORT` (loopback emulator), `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (local dummy only), `AWS_DEFAULT_REGION`, `S3_ENDPOINT_URL`, `S3_BUCKET`, `CSV_MAX_BYTES`, `CSV_CHUNK_SIZE`, `UPLOAD_URL_TTL_SECONDS`, and `INGESTION_LEASE_SECONDS`. The S3 bucket has a persistent named volume. `make down` preserves it; `docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml down --volumes` removes **all three** project data volumes and is destructive. Check the Compose project name and back up wanted data first.
+
+M4 is product discovery. M3 does not crawl, match, notify, or send mail.
 

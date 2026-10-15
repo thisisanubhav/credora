@@ -78,21 +78,20 @@ The files below are planned paths, not evidence that they already exist.
 
 ## M3 - CSV ingestion pipeline
 
-**Objective:** Upload directly to object storage, process a batch idempotently, and hand a committed batch to an authenticated n8n webhook.
+**Objective:** Upload directly to object storage, process a batch idempotently, and commit a pending matching-request outbox event.
 
 **Implementation scope**
 
 - Minimal FastAPI presign endpoint adapted to Lambda; presigned POST constraints and CORS.
 - S3-triggered Python ingestion handler with streamed CSV validation, bounded errors, chunked/bulk inserts, batch/outbox transaction, and structured logs.
-- HMAC webhook client with timeouts/retry classification.
-- Local storage/event and webhook test doubles; no cloud provisioning.
+- Defer HMAC webhook delivery and its retry classification to M5; M3 does not dispatch the outbox.
+- LocalStack S3 emulator and direct Lambda-handler event invocation; no cloud provisioning.
 
 **Files to create/modify**
 
 - `apps/api/` handlers/config/tests
-- `services/ingestion/` parser, repository, handler, webhook client
-- `services/common/events.py`
-- `tests/fixtures/csv/`, `tests/contract/`, `tests/integration/`
+- `services/ingestion/` configuration and streamed worker
+- `tests/ingestion/` and `scripts/ingestion_e2e.py`
 - README ingestion contract/error policy
 
 **Acceptance criteria**
@@ -100,9 +99,9 @@ The files below are planned paths, not evidence that they already exist.
 - Valid CSV creates one batch, its users, and one outbox event.
 - Duplicate S3 delivery/webhook retry creates no duplicate users/events.
 - File/header failures create no users; chosen row-error policy is consistent and visible.
-- n8n receives only a batch envelope after DB commit; invalid auth/replay is rejected by a stub workflow/receiver.
+- The pending outbox row contains only a batch identifier and is committed with batch completion; M5 will test n8n authentication and replay.
 
-**Required tests:** Valid/boundary CSV, BOM/encoding, missing/extra columns, oversized file/row/field, duplicate IDs, injection-shaped text, DB rollback, webhook timeout/429/4xx/5xx/replay, property tests for parser invariants.
+**Required tests:** Valid/boundary CSV, BOM/encoding, missing/extra columns, oversized file, duplicate IDs, DB rollback, concurrent/replayed event delivery, presigned POST, and local E2E. Webhook transport tests move to M5.
 
 **Dependencies:** M2; finalized CSV schema and maximum byte/row counts.
 
