@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import ValidationError
 
+from apps.matching_api.router import router as matching_router
 from services.common.db import make_engine
 from services.discovery.crawler import CrawlError, fetch_source
 from services.discovery.extraction import (
@@ -21,6 +22,7 @@ from services.discovery.persistence import mark_attempt, persist_product, record
 from services.discovery.sources import SOURCES, require_source
 
 app = FastAPI(title="Internal Discovery Steps", docs_url=None, redoc_url=None)
+app.include_router(matching_router)
 
 
 def _engine():  # type: ignore[no-untyped-def]
