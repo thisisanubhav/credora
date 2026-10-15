@@ -51,20 +51,30 @@ def runtime_role() -> None:
     with admin_connection(os.environ["POSTGRES_DB"]) as conn, conn.cursor() as cursor:
         cursor.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(role)))
         cursor.execute(
-            sql.SQL("GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO {}").format(
+            sql.SQL("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {}").format(
                 sql.Identifier(role)
             )
         )
-        cursor.execute(sql.SQL("REVOKE UPDATE ON loan_products FROM {}").format(sql.Identifier(role)))
+        cursor.execute(
+            sql.SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE SELECT, INSERT, UPDATE ON TABLES FROM {}").format(
+                sql.Identifier(role)
+            )
+        )
+        cursor.execute(
+            sql.SQL(
+                "GRANT SELECT, INSERT, UPDATE ON upload_batches, product_sources, matches, "
+                "workflow_executions, outbox_events, notification_logs TO {}"
+            ).format(sql.Identifier(role))
+        )
+        cursor.execute(
+            sql.SQL("GRANT SELECT, INSERT ON users, loan_products, notification_matches TO {}").format(
+                sql.Identifier(role)
+            )
+        )
         cursor.execute(
             sql.SQL(
                 "GRANT UPDATE (is_current, last_seen_at, retired_at, verification_status) "
                 "ON loan_products TO {}"
-            ).format(sql.Identifier(role))
-        )
-        cursor.execute(
-            sql.SQL(
-                "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE ON TABLES TO {}"
             ).format(sql.Identifier(role))
         )
     print("Runtime role configured without DDL or DELETE privileges (credentials hidden).")
@@ -103,6 +113,10 @@ def check_connection() -> None:
                 raise ValueError("runtime role unexpectedly has DELETE privileges")
             if conn.execute(text("SELECT has_column_privilege(current_user, 'loan_products', 'eligibility_rules', 'UPDATE')")).scalar_one():
                 raise ValueError("runtime role can mutate historical eligibility rules")
+            if conn.execute(text("SELECT has_table_privilege(current_user, 'alembic_version', 'INSERT')")).scalar_one():
+                raise ValueError("runtime role can mutate migration version state")
+            if conn.execute(text("SELECT has_table_privilege(current_user, 'users', 'UPDATE')")).scalar_one():
+                raise ValueError("runtime role can mutate imported users")
         print("Runtime role connected to the application database (credentials hidden).")
     finally:
         engine.dispose()
