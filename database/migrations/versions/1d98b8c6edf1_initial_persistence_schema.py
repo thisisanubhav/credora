@@ -1,7 +1,7 @@
 """initial persistence schema
 
 Revision ID: 1d98b8c6edf1
-Revises: 
+Revises:
 """
 from collections.abc import Sequence
 
