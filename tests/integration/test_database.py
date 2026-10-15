@@ -5,13 +5,13 @@ from __future__ import annotations
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import inspect, select, text
+from sqlalchemy import inspect, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 
@@ -95,7 +95,7 @@ def product(session, *, source: ProductSource | None = None, version: int = 1, c
         )
         session.add(source)
         session.flush()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     item = LoanProduct(
         source_id=source.id,
         source_product_key="fixture-loan",
