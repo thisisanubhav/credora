@@ -256,7 +256,7 @@ M7 implementation checkpoint (2026-10-15): the Next.js 16/TypeScript/Tailwind pa
 
 **Acceptance criteria**
 
-- `serverless package`/config validation succeeds with placeholder parameters.
+- Offline Serverless YAML contract checks and a locally built Linux Lambda artifact pass; authenticated Serverless CLI package is deferred because it can access AWS.
 - IAM and security-group review shows least privilege, private RDS, encrypted storage, bounded logs, no plaintext secrets.
 - Package contains only runtime files and pinned dependencies.
 - No resource is deployed by CI or by completing this milestone unless explicitly authorized.
@@ -266,6 +266,8 @@ M7 implementation checkpoint (2026-10-15): the Next.js 16/TypeScript/Tailwind pa
 **Dependencies:** M3-M7 handlers/contracts; current Serverless/AWS documentation; network/cost decision.
 
 **Definition of done:** A reviewer can inspect exactly what would be created, configured, cost-bearing, and destroyed before choosing to deploy.
+
+M8 implementation checkpoint (2026-10-15): the budget is explicitly ₹0. The native S3 Lambda binding, JWT owner-scoped HTTP API, private-bucket/IAM/VPC template, local Lambda zip builder, and static checks are implemented. No AWS resources are provisioned. `serverless package` and live IAM/network/SES checks are blocked by the zero-budget policy and Serverless v4's AWS/account-resolution requirements. RDS/VPC/n8n hosting and OIDC browser integration remain prerequisites to any future authorized public deployment. See [AWS deployment design](aws-deployment-design.md), [guide](aws-deployment-guide.md), [cost analysis](aws-cost-analysis.md), and [security review](security-review.md). M9 is not started.
 
 ## M9 - Integration and end-to-end testing
 

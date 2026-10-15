@@ -281,6 +281,8 @@ No cost numbers are asserted here because region, usage, free-tier eligibility, 
 
 ## Architecture decision records to capture during implementation
 
+M8 adds an **offline-only** AWS definition while preserving the local M7 path. Its private S3 bucket publishes native `ObjectCreated` notifications to the existing ingestion Lambda, whose committed outbox is consumed by the separately hosted dispatcher and n8n. A JWT-authorized HTTP API scopes batch status/error access to the verified subject; the M7 browser still needs OIDC integration before cloud use. RDS, VPC, n8n hosting, and SES delivery are **not** provisioned under the ₹0 budget. See [AWS deployment design](aws-deployment-design.md) for the trust-boundary diagram, network/cost rationale, and unverified deployment prerequisites.
+
 - ADR-001: Presigned POST and file/row limits.
 - ADR-002: Partial-row acceptance versus whole-batch atomic rejection.
 - ADR-003: n8n cloud-demo host and network placement.

@@ -266,3 +266,11 @@ make web-build
 
 Install Chromium once with `cd apps/web && npx playwright install chromium`. A real browser-to-LocalStack upload and sanitized screenshots are described in [frontend evidence](docs/frontend-evidence.md). The upload API intentionally has no end-user authentication or rate limit; all M7 endpoints and containers are loopback-only. CORS restricts browser origins but is **not** authentication. Do not expose this setup publicly without the M8 security design.
 
+### M8 AWS deployment readiness (offline only)
+
+The authorized budget is **₹0**. M8 adds a future-oriented [Serverless definition](infrastructure/serverless.yml), a real upload-API Lambda adapter and native S3 ingestion binding, owner-scoped JWT API access, a local Linux Lambda zip builder, and offline infrastructure tests. It does **not** deploy, provision, send email, or contact AWS. The complete demo stays local with Docker PostgreSQL/n8n and LocalStack S3. The current browser has no OIDC login, so it cannot yet call the protected AWS API; do not remove JWT authorization to bypass this.
+
+From the repository root: `uv sync --frozen`, `make aws-config-offline aws-test`, then `make aws-package-local`. The latter builds ignored `.build/m8/lambda.zip` from pinned dependencies and checks handler imports/package size without AWS. `make aws-preflight-offline` checks future deployment environment-variable shapes only; see [non-secret variable template](infrastructure/aws.env.example). No deploy command is provided. Serverless CLI packaging itself can resolve AWS account/SSM/S3 state, so it is **not** an offline check and was not run. Keep `.env`, `infrastructure/aws.env`, credentials and keys private.
+
+See [deployment design](docs/aws-deployment-design.md), [conditional guide](docs/aws-deployment-guide.md), [cost inventory](docs/aws-cost-analysis.md), and [security review](docs/security-review.md). Future RDS, n8n hosting, identity provider, SES, and live AWS verification all require a separate approval and spending decision. The local M3–M7 setup remains unchanged.
+
