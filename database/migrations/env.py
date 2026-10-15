@@ -6,9 +6,7 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
-
-from services.common.db import database_url
+from services.common.db import database_url, make_engine
 from services.common.models import Base
 
 config = context.config
@@ -35,15 +33,7 @@ def run_migrations_online() -> None:
         with context.begin_transaction():
             context.run_migrations()
         return
-    config.set_main_option(
-        "sqlalchemy.url",
-        database_url(role="migration", database=os.environ.get("DATABASE_NAME")).render_as_string(hide_password=False).replace("%", "%%"),
-    )
-    engine = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    engine = make_engine(role="migration", database=os.environ.get("DATABASE_NAME"))
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
         with context.begin_transaction():
