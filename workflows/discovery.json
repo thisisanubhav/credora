@@ -9,29 +9,71 @@
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [0, 80]
+      "position": [
+        0,
+        80
+      ]
     },
     {
       "parameters": {
-        "rule": {"interval": [{"field": "hours", "hoursInterval": 24}]}
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24
+            }
+          ]
+        }
       },
       "id": "daily-schedule",
       "name": "Daily Schedule",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [0, 280]
+      "position": [
+        0,
+        280
+      ]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "http://discovery:8001/discovery/runs",
-        "options": {"timeout": 30000}
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Internal-Key-Id",
+              "value": "={{ $json.internal_auth.key_id }}"
+            },
+            {
+              "name": "X-Internal-Timestamp",
+              "value": "={{ $json.internal_auth.timestamp }}"
+            },
+            {
+              "name": "X-Internal-Nonce",
+              "value": "={{ $json.internal_auth.nonce }}"
+            },
+            {
+              "name": "X-Internal-Signature",
+              "value": "={{ $json.internal_auth.signature }}"
+            }
+          ]
+        }
       },
       "id": "start-run",
       "name": "Start Discovery Run",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [220, 180]
+      "position": [
+        220,
+        180
+      ]
     },
     {
       "parameters": {
@@ -41,7 +83,10 @@
       "name": "Source Configuration",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [440, 180]
+      "position": [
+        440,
+        180
+      ]
     },
     {
       "parameters": {
@@ -49,14 +94,40 @@
         "url": "http://discovery:8001/discovery/fetch",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": {"timeout": 90000}
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 90000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Internal-Key-Id",
+              "value": "={{ $json.internal_auth.key_id }}"
+            },
+            {
+              "name": "X-Internal-Timestamp",
+              "value": "={{ $json.internal_auth.timestamp }}"
+            },
+            {
+              "name": "X-Internal-Nonce",
+              "value": "={{ $json.internal_auth.nonce }}"
+            },
+            {
+              "name": "X-Internal-Signature",
+              "value": "={{ $json.internal_auth.signature }}"
+            }
+          ]
+        }
       },
       "id": "fetch-source",
       "name": "Fetch Official Source",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [660, 180]
+      "position": [
+        660,
+        180
+      ]
     },
     {
       "parameters": {
@@ -64,20 +135,61 @@
         "url": "http://discovery:8001/discovery/extract",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": {"timeout": 30000}
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Internal-Key-Id",
+              "value": "={{ $json.internal_auth.key_id }}"
+            },
+            {
+              "name": "X-Internal-Timestamp",
+              "value": "={{ $json.internal_auth.timestamp }}"
+            },
+            {
+              "name": "X-Internal-Nonce",
+              "value": "={{ $json.internal_auth.nonce }}"
+            },
+            {
+              "name": "X-Internal-Signature",
+              "value": "={{ $json.internal_auth.signature }}"
+            }
+          ]
+        }
       },
       "id": "extract-product",
       "name": "Extract Deterministic Criteria",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [880, 180]
+      "position": [
+        880,
+        180
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
-          "conditions": [{"id": "needs-llm", "leftValue": "={{ $json.needs_llm === true && $json.status === 'ok' }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true"}}],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "needs-llm",
+              "leftValue": "={{ $json.needs_llm === true && $json.status === 'ok' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
           "combinator": "and"
         }
       },
@@ -85,7 +197,10 @@
       "name": "Needs Gemini?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1100, 180]
+      "position": [
+        1100,
+        180
+      ]
     },
     {
       "parameters": {
@@ -93,14 +208,40 @@
         "url": "http://discovery:8001/discovery/gemini",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": {"timeout": 60000}
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 60000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Internal-Key-Id",
+              "value": "={{ $json.internal_auth.key_id }}"
+            },
+            {
+              "name": "X-Internal-Timestamp",
+              "value": "={{ $json.internal_auth.timestamp }}"
+            },
+            {
+              "name": "X-Internal-Nonce",
+              "value": "={{ $json.internal_auth.nonce }}"
+            },
+            {
+              "name": "X-Internal-Signature",
+              "value": "={{ $json.internal_auth.signature }}"
+            }
+          ]
+        }
       },
       "id": "gemini-extract",
       "name": "Gemini Qualitative Extraction",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1320, 80]
+      "position": [
+        1320,
+        80
+      ]
     },
     {
       "parameters": {
@@ -108,14 +249,40 @@
         "url": "http://discovery:8001/discovery/validate",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": {"timeout": 30000}
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Internal-Key-Id",
+              "value": "={{ $json.internal_auth.key_id }}"
+            },
+            {
+              "name": "X-Internal-Timestamp",
+              "value": "={{ $json.internal_auth.timestamp }}"
+            },
+            {
+              "name": "X-Internal-Nonce",
+              "value": "={{ $json.internal_auth.nonce }}"
+            },
+            {
+              "name": "X-Internal-Signature",
+              "value": "={{ $json.internal_auth.signature }}"
+            }
+          ]
+        }
       },
       "id": "validate-evidence",
       "name": "Validate Source Evidence",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1540, 180]
+      "position": [
+        1540,
+        180
+      ]
     },
     {
       "parameters": {
@@ -123,14 +290,40 @@
         "url": "http://discovery:8001/discovery/persist",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": {"timeout": 30000}
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Internal-Key-Id",
+              "value": "={{ $json.internal_auth.key_id }}"
+            },
+            {
+              "name": "X-Internal-Timestamp",
+              "value": "={{ $json.internal_auth.timestamp }}"
+            },
+            {
+              "name": "X-Internal-Nonce",
+              "value": "={{ $json.internal_auth.nonce }}"
+            },
+            {
+              "name": "X-Internal-Signature",
+              "value": "={{ $json.internal_auth.signature }}"
+            }
+          ]
+        }
       },
       "id": "persist-version",
       "name": "Persist Product Version",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1760, 180]
+      "position": [
+        1760,
+        180
+      ]
     },
     {
       "parameters": {
@@ -138,14 +331,40 @@
         "url": "http://discovery:8001/discovery/record",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": {"timeout": 30000}
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Internal-Key-Id",
+              "value": "={{ $json.internal_auth.key_id }}"
+            },
+            {
+              "name": "X-Internal-Timestamp",
+              "value": "={{ $json.internal_auth.timestamp }}"
+            },
+            {
+              "name": "X-Internal-Nonce",
+              "value": "={{ $json.internal_auth.nonce }}"
+            },
+            {
+              "name": "X-Internal-Signature",
+              "value": "={{ $json.internal_auth.signature }}"
+            }
+          ]
+        }
       },
       "id": "record-outcome",
       "name": "Record Source Outcome",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1980, 180]
+      "position": [
+        1980,
+        180
+      ]
     },
     {
       "parameters": {
@@ -155,24 +374,309 @@
       "name": "Execution Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2200, 180]
+      "position": [
+        2200,
+        180
+      ]
+    },
+    {
+      "id": "sign-start-run",
+      "name": "Sign Start Discovery Run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        110,
+        70
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst canonical = value => Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : (value !== null && typeof value === 'object' ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}` : JSON.stringify(value));\nreturn $input.all().map((item, index) => {\n  const input = item.json;\n  const payload = {};\n  const key_id = $env.INTERNAL_STEP_KEY_ID;\n  const secret = $env.INTERNAL_STEP_SECRET;\n  if (!key_id || !secret || secret.length < 32) throw new Error('internal_signer_unconfigured');\n  const timestamp = String(Math.floor(Date.now() / 1000));\n  const nonce = crypto.randomUUID();\n  const message = [key_id, timestamp, nonce, 'POST', '/discovery/runs', canonical(payload)].join('\\n');\n  const signature = crypto.createHmac('sha256', secret).update(message).digest('hex');\n  return {json: {payload, internal_auth: {key_id, timestamp, nonce, signature}}, pairedItem: {item: index}};\n});"
+      }
+    },
+    {
+      "id": "sign-fetch-source",
+      "name": "Sign Fetch Official Source",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        550,
+        70
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst canonical = value => Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : (value !== null && typeof value === 'object' ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}` : JSON.stringify(value));\nreturn $input.all().map((item, index) => {\n  const input = item.json;\n  const payload = JSON.parse(JSON.stringify(input));\n  const key_id = $env.INTERNAL_STEP_KEY_ID;\n  const secret = $env.INTERNAL_STEP_SECRET;\n  if (!key_id || !secret || secret.length < 32) throw new Error('internal_signer_unconfigured');\n  const timestamp = String(Math.floor(Date.now() / 1000));\n  const nonce = crypto.randomUUID();\n  const message = [key_id, timestamp, nonce, 'POST', '/discovery/fetch', canonical(payload)].join('\\n');\n  const signature = crypto.createHmac('sha256', secret).update(message).digest('hex');\n  return {json: {payload, internal_auth: {key_id, timestamp, nonce, signature}}, pairedItem: {item: index}};\n});"
+      }
+    },
+    {
+      "id": "sign-extract-product",
+      "name": "Sign Extract Deterministic Criteria",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        770,
+        70
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst canonical = value => Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : (value !== null && typeof value === 'object' ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}` : JSON.stringify(value));\nreturn $input.all().map((item, index) => {\n  const input = item.json;\n  const payload = JSON.parse(JSON.stringify(input));\n  const key_id = $env.INTERNAL_STEP_KEY_ID;\n  const secret = $env.INTERNAL_STEP_SECRET;\n  if (!key_id || !secret || secret.length < 32) throw new Error('internal_signer_unconfigured');\n  const timestamp = String(Math.floor(Date.now() / 1000));\n  const nonce = crypto.randomUUID();\n  const message = [key_id, timestamp, nonce, 'POST', '/discovery/extract', canonical(payload)].join('\\n');\n  const signature = crypto.createHmac('sha256', secret).update(message).digest('hex');\n  return {json: {payload, internal_auth: {key_id, timestamp, nonce, signature}}, pairedItem: {item: index}};\n});"
+      }
+    },
+    {
+      "id": "sign-gemini-extract",
+      "name": "Sign Gemini Qualitative Extraction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1210,
+        -30
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst canonical = value => Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : (value !== null && typeof value === 'object' ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}` : JSON.stringify(value));\nreturn $input.all().map((item, index) => {\n  const input = item.json;\n  const payload = JSON.parse(JSON.stringify(input));\n  const key_id = $env.INTERNAL_STEP_KEY_ID;\n  const secret = $env.INTERNAL_STEP_SECRET;\n  if (!key_id || !secret || secret.length < 32) throw new Error('internal_signer_unconfigured');\n  const timestamp = String(Math.floor(Date.now() / 1000));\n  const nonce = crypto.randomUUID();\n  const message = [key_id, timestamp, nonce, 'POST', '/discovery/gemini', canonical(payload)].join('\\n');\n  const signature = crypto.createHmac('sha256', secret).update(message).digest('hex');\n  return {json: {payload, internal_auth: {key_id, timestamp, nonce, signature}}, pairedItem: {item: index}};\n});"
+      }
+    },
+    {
+      "id": "sign-validate-evidence",
+      "name": "Sign Validate Source Evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1430,
+        70
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst canonical = value => Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : (value !== null && typeof value === 'object' ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}` : JSON.stringify(value));\nreturn $input.all().map((item, index) => {\n  const input = item.json;\n  const payload = JSON.parse(JSON.stringify(input));\n  const key_id = $env.INTERNAL_STEP_KEY_ID;\n  const secret = $env.INTERNAL_STEP_SECRET;\n  if (!key_id || !secret || secret.length < 32) throw new Error('internal_signer_unconfigured');\n  const timestamp = String(Math.floor(Date.now() / 1000));\n  const nonce = crypto.randomUUID();\n  const message = [key_id, timestamp, nonce, 'POST', '/discovery/validate', canonical(payload)].join('\\n');\n  const signature = crypto.createHmac('sha256', secret).update(message).digest('hex');\n  return {json: {payload, internal_auth: {key_id, timestamp, nonce, signature}}, pairedItem: {item: index}};\n});"
+      }
+    },
+    {
+      "id": "sign-persist-version",
+      "name": "Sign Persist Product Version",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1650,
+        70
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst canonical = value => Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : (value !== null && typeof value === 'object' ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}` : JSON.stringify(value));\nreturn $input.all().map((item, index) => {\n  const input = item.json;\n  const payload = JSON.parse(JSON.stringify(input));\n  const key_id = $env.INTERNAL_STEP_KEY_ID;\n  const secret = $env.INTERNAL_STEP_SECRET;\n  if (!key_id || !secret || secret.length < 32) throw new Error('internal_signer_unconfigured');\n  const timestamp = String(Math.floor(Date.now() / 1000));\n  const nonce = crypto.randomUUID();\n  const message = [key_id, timestamp, nonce, 'POST', '/discovery/persist', canonical(payload)].join('\\n');\n  const signature = crypto.createHmac('sha256', secret).update(message).digest('hex');\n  return {json: {payload, internal_auth: {key_id, timestamp, nonce, signature}}, pairedItem: {item: index}};\n});"
+      }
+    },
+    {
+      "id": "sign-record-outcome",
+      "name": "Sign Record Source Outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1870,
+        70
+      ],
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst canonical = value => Array.isArray(value) ? `[${value.map(canonical).join(',')}]` : (value !== null && typeof value === 'object' ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}` : JSON.stringify(value));\nreturn $input.all().map((item, index) => {\n  const input = item.json;\n  const payload = JSON.parse(JSON.stringify(input));\n  const key_id = $env.INTERNAL_STEP_KEY_ID;\n  const secret = $env.INTERNAL_STEP_SECRET;\n  if (!key_id || !secret || secret.length < 32) throw new Error('internal_signer_unconfigured');\n  const timestamp = String(Math.floor(Date.now() / 1000));\n  const nonce = crypto.randomUUID();\n  const message = [key_id, timestamp, nonce, 'POST', '/discovery/record', canonical(payload)].join('\\n');\n  const signature = crypto.createHmac('sha256', secret).update(message).digest('hex');\n  return {json: {payload, internal_auth: {key_id, timestamp, nonce, signature}}, pairedItem: {item: index}};\n});"
+      }
     }
   ],
   "connections": {
-    "Manual Trigger": {"main": [[{"node": "Start Discovery Run", "type": "main", "index": 0}]]},
-    "Daily Schedule": {"main": [[{"node": "Start Discovery Run", "type": "main", "index": 0}]]},
-    "Start Discovery Run": {"main": [[{"node": "Source Configuration", "type": "main", "index": 0}]]},
-    "Source Configuration": {"main": [[{"node": "Fetch Official Source", "type": "main", "index": 0}]]},
-    "Fetch Official Source": {"main": [[{"node": "Extract Deterministic Criteria", "type": "main", "index": 0}]]},
-    "Extract Deterministic Criteria": {"main": [[{"node": "Needs Gemini?", "type": "main", "index": 0}]]},
-    "Needs Gemini?": {"main": [
-      [{"node": "Gemini Qualitative Extraction", "type": "main", "index": 0}],
-      [{"node": "Validate Source Evidence", "type": "main", "index": 0}]
-    ]},
-    "Gemini Qualitative Extraction": {"main": [[{"node": "Validate Source Evidence", "type": "main", "index": 0}]]},
-    "Validate Source Evidence": {"main": [[{"node": "Persist Product Version", "type": "main", "index": 0}]]},
-    "Persist Product Version": {"main": [[{"node": "Record Source Outcome", "type": "main", "index": 0}]]},
-    "Record Source Outcome": {"main": [[{"node": "Execution Summary", "type": "main", "index": 0}]]}
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Sign Start Discovery Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Sign Start Discovery Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Discovery Run": {
+      "main": [
+        [
+          {
+            "node": "Source Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Source Configuration": {
+      "main": [
+        [
+          {
+            "node": "Sign Fetch Official Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Official Source": {
+      "main": [
+        [
+          {
+            "node": "Sign Extract Deterministic Criteria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Deterministic Criteria": {
+      "main": [
+        [
+          {
+            "node": "Needs Gemini?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Gemini?": {
+      "main": [
+        [
+          {
+            "node": "Sign Gemini Qualitative Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sign Validate Source Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Qualitative Extraction": {
+      "main": [
+        [
+          {
+            "node": "Sign Validate Source Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Source Evidence": {
+      "main": [
+        [
+          {
+            "node": "Sign Persist Product Version",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Product Version": {
+      "main": [
+        [
+          {
+            "node": "Sign Record Source Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Source Outcome": {
+      "main": [
+        [
+          {
+            "node": "Execution Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Start Discovery Run": {
+      "main": [
+        [
+          {
+            "node": "Start Discovery Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Fetch Official Source": {
+      "main": [
+        [
+          {
+            "node": "Fetch Official Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Extract Deterministic Criteria": {
+      "main": [
+        [
+          {
+            "node": "Extract Deterministic Criteria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Gemini Qualitative Extraction": {
+      "main": [
+        [
+          {
+            "node": "Gemini Qualitative Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Validate Source Evidence": {
+      "main": [
+        [
+          {
+            "node": "Validate Source Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Persist Product Version": {
+      "main": [
+        [
+          {
+            "node": "Persist Product Version",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Record Source Outcome": {
+      "main": [
+        [
+          {
+            "node": "Record Source Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "settings": {
     "executionOrder": "v1",
