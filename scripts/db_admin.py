@@ -10,6 +10,8 @@ import psycopg
 from psycopg import sql
 
 from services.common.db import database_url
+from services.common.db import make_engine
+from sqlalchemy import text
 
 
 def runtime_role() -> None:
@@ -46,7 +48,18 @@ def test_database() -> None:
     print("Dedicated test database available (development database untouched).")
 
 
+def check_connection() -> None:
+    engine = make_engine()
+    try:
+        with engine.connect() as conn:
+            if conn.execute(text("SELECT current_database()" )).scalar_one() != os.environ["POSTGRES_DB"]:
+                raise ValueError("connected to an unexpected database")
+        print("Runtime role connected to the application database (credentials hidden).")
+    finally:
+        engine.dispose()
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in {"runtime-role", "test-database"}:
-        raise SystemExit("usage: python -m scripts.db_admin {runtime-role|test-database}")
-    {"runtime-role": runtime_role, "test-database": test_database}[sys.argv[1]]()
+    if len(sys.argv) != 2 or sys.argv[1] not in {"runtime-role", "test-database", "check"}:
+        raise SystemExit("usage: python -m scripts.db_admin {runtime-role|test-database|check}")
+    {"runtime-role": runtime_role, "test-database": test_database, "check": check_connection}[sys.argv[1]]()
