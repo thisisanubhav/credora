@@ -1,6 +1,6 @@
 COMPOSE = docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml
 
-.PHONY: init check-env config up down logs status smoke db-upgrade db-status db-role db-connect db-test lint typecheck s3-init api ingestion-test ingestion-e2e discovery-test discovery-import discovery-run matching-import matching-dispatch matching-test matching-e2e matching-benchmark notification-import notification-test notification-e2e web-install web-dev web-lint web-typecheck web-build web-test web-e2e local-worker
+.PHONY: init check-env config up down logs status smoke db-upgrade db-status db-role db-connect db-test lint typecheck s3-init api ingestion-test ingestion-e2e discovery-test discovery-import discovery-run matching-import matching-dispatch matching-test matching-e2e matching-benchmark notification-import notification-test notification-e2e web-install web-dev web-lint web-typecheck web-build web-test web-e2e local-worker aws-config-offline aws-package-local aws-preflight-offline aws-test
 
 init:
 	python3 scripts/local_env.py init
@@ -117,6 +117,20 @@ web-test:
 
 web-e2e:
 	npm run test:e2e --prefix apps/web
+
+# M8 commands inspect/build locally only. No deploy target exists by design.
+aws-config-offline:
+	uv run --frozen python -m scripts.aws_validate
+
+aws-package-local:
+	uv run --frozen python -m scripts.package_lambdas
+	uv run --frozen python -m scripts.aws_validate --package
+
+aws-preflight-offline:
+	uv run --frozen python -m scripts.aws_validate --preflight
+
+aws-test:
+	uv run --frozen pytest tests/infrastructure
 
 lint:
 	uv run --frozen ruff check apps services scripts tests benchmarks database/migrations

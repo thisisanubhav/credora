@@ -1,0 +1,224 @@
+# M8 AWS definition only. NEVER run deploy under the project's zero-spend policy.
+# Requires externally approved private VPC/RDS/n8n host and a verified OIDC issuer.
+service: loan-eligibility-engine
+frameworkVersion: '4.44.0'
+
+provider:
+  name: aws
+  runtime: python3.12
+  architecture: x86_64
+  stage: ${opt:stage, 'dev'}
+  region: ${env:AWS_REGION}
+  logRetentionInDays: 14
+  versionFunctions: false
+  deploymentMethod: direct
+  httpApi:
+    payload: '2.0'
+    cors:
+      allowedOrigins:
+        - ${env:FRONTEND_ORIGIN}
+      allowedMethods:
+        - GET
+        - POST
+        - OPTIONS
+      allowedHeaders:
+        - Content-Type
+        - Idempotency-Key
+        - Authorization
+    authorizers:
+      uploadJwt:
+        identitySource: $request.header.Authorization
+        issuerUrl: ${env:JWT_ISSUER_URL}
+        audience:
+          - ${env:JWT_AUDIENCE}
+  vpc:
+    securityGroupIds:
+      - ${env:LAMBDA_SECURITY_GROUP_ID}
+    subnetIds:
+      - ${env:PRIVATE_SUBNET_A_ID}
+      - ${env:PRIVATE_SUBNET_B_ID}
+  environment:
+    DEPLOYMENT_MODE: aws
+    FRONTEND_ORIGIN: ${env:FRONTEND_ORIGIN}
+    S3_BUCKET: ${env:UPLOAD_BUCKET_NAME}
+    CSV_MAX_BYTES: '10000000'
+    CSV_CHUNK_SIZE: '500'
+    UPLOAD_URL_TTL_SECONDS: '600'
+    INGESTION_LEASE_SECONDS: '900'
+    POSTGRES_HOST: ${env:DB_HOST}
+    POSTGRES_PORT: '5432'
+    POSTGRES_DB: ${env:DB_NAME}
+    APP_DB_USER: ${env:DB_RUNTIME_USER}
+    # CloudFormation resolves this only at an authorized deploy. Never place a password here.
+    APP_DB_PASSWORD: '{{resolve:secretsmanager:${env:DB_SECRET_ARN}:SecretString:password}}'
+
+package:
+  artifact: ../.build/m8/lambda.zip
+
+functions:
+  uploadApi:
+    handler: apps.api.aws_handler.handler
+    name: ${self:service}-${sls:stage}-upload-api
+    role: ApiExecutionRole
+    memorySize: 256
+    timeout: 15
+    reservedConcurrency: 4
+    events:
+      - httpApi:
+          method: POST
+          path: /uploads
+          authorizer:
+            name: uploadJwt
+      - httpApi:
+          method: GET
+          path: /uploads/{batch_id}
+          authorizer:
+            name: uploadJwt
+      - httpApi:
+          method: GET
+          path: /uploads/{batch_id}/errors
+          authorizer:
+            name: uploadJwt
+      - httpApi:
+          method: GET
+          path: /health
+  ingestion:
+    handler: services.ingestion.worker.lambda_handler
+    name: ${self:service}-${sls:stage}-ingestion
+    role: IngestionExecutionRole
+    memorySize: 512
+    timeout: 900
+    reservedConcurrency: 2
+    # S3 notification is declared explicitly below to configure encryption and ownership.
+
+resources:
+  Resources:
+    ApiExecutionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal: {Service: lambda.amazonaws.com}
+              Action: sts:AssumeRole
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        Policies:
+          - PolicyName: PresignUploadsOnly
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: s3:PutObject
+                  Resource:
+                    Fn::Join: ['', ['arn:aws:s3:::', '${env:UPLOAD_BUCKET_NAME}', '/uploads/*']]
+    IngestionExecutionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal: {Service: lambda.amazonaws.com}
+              Action: sts:AssumeRole
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        Policies:
+          - PolicyName: ReadUploadsAndFailureDestination
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: s3:GetObject
+                  Resource:
+                    Fn::Join: ['', ['arn:aws:s3:::', '${env:UPLOAD_BUCKET_NAME}', '/uploads/*']]
+                - Effect: Allow
+                  Action: sqs:SendMessage
+                  Resource: {Fn::GetAtt: [IngestionFailureQueue, Arn]}
+    IngestionFailureQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-ingestion-failures
+        MessageRetentionPeriod: 1209600
+        SqsManagedSseEnabled: true
+    IngestionFailureDestination:
+      Type: AWS::Lambda::EventInvokeConfig
+      Properties:
+        FunctionName: {Ref: IngestionLambdaFunction}
+        Qualifier: $LATEST
+        MaximumRetryAttempts: 2
+        MaximumEventAgeInSeconds: 3600
+        DestinationConfig:
+          OnFailure:
+            Destination: {Fn::GetAtt: [IngestionFailureQueue, Arn]}
+    IngestionS3InvokePermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName: {Fn::GetAtt: [IngestionLambdaFunction, Arn]}
+        Principal: s3.amazonaws.com
+        SourceAccount: {Ref: AWS::AccountId}
+        SourceArn:
+          Fn::Join: ['', ['arn:aws:s3:::', '${env:UPLOAD_BUCKET_NAME}']]
+    UploadBucket:
+      Type: AWS::S3::Bucket
+      DependsOn: IngestionS3InvokePermission
+      Properties:
+        BucketName: ${env:UPLOAD_BUCKET_NAME}
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+        OwnershipControls:
+          Rules:
+            - ObjectOwnership: BucketOwnerEnforced
+        BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+        LifecycleConfiguration:
+          Rules:
+            - Id: ExpireProcessedSourceFiles
+              Status: Enabled
+              Prefix: uploads/
+              ExpirationInDays: 7
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins: ['${env:FRONTEND_ORIGIN}']
+              AllowedMethods: [POST]
+              AllowedHeaders: [Content-Type]
+              MaxAge: 300
+        NotificationConfiguration:
+          LambdaConfigurations:
+            - Event: s3:ObjectCreated:*
+              Function: {Fn::GetAtt: [IngestionLambdaFunction, Arn]}
+              Filter:
+                S3Key:
+                  Rules:
+                    - {Name: prefix, Value: 'uploads/'}
+                    - {Name: suffix, Value: '.csv'}
+    UploadBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: {Ref: UploadBucket}
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Sid: DenyInsecureTransport
+              Effect: Deny
+              Principal: '*'
+              Action: s3:*
+              Resource:
+                - {Fn::GetAtt: [UploadBucket, Arn]}
+                - Fn::Join: ['', [{Fn::GetAtt: [UploadBucket, Arn]}, '/*']]
+              Condition:
+                Bool: {aws:SecureTransport: 'false'}
+  Outputs:
+    UploadBucketName:
+      Value: {Ref: UploadBucket}
+    IngestionFailureQueueArn:
+      Value: {Fn::GetAtt: [IngestionFailureQueue, Arn]}

@@ -1,0 +1,9 @@
+# Only imports needed by the upload API and ingestion Lambda.
+# scripts/package_lambdas.py constrains transitive versions to uv.lock.
+boto3==1.43.114
+email-validator==2.3.0
+fastapi==0.143.1
+mangum==0.22.0
+psycopg[binary]==3.3.6
+pydantic==2.14.1
+SQLAlchemy==2.0.54

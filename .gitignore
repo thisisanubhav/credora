@@ -1,6 +1,7 @@
 # Environment and credentials
 .env
 .env.*
+infrastructure/aws.env
 !.env.example
 !.env.local.example
 *.pem
@@ -31,6 +32,7 @@ playwright-report/
 
 # Serverless / AWS local artifacts
 .serverless/
+.build/
 .aws-sam/
 
 # n8n local state and data

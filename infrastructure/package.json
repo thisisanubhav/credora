@@ -1,0 +1,9 @@
+{
+  "name": "loan-engine-infrastructure",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Pinned Serverless Framework CLI for a future authorized AWS deployment",
+  "devDependencies": {
+    "serverless": "4.44.0"
+  }
+}
