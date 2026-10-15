@@ -1,6 +1,6 @@
 # Loan Eligibility Engine — private reviewer summary
 
-Repository: <https://github.com/thisisanubhav/loan-eligibility-engine> (private). M9.1 verified ancestry baseline: `fe09a9c`; the final M10 publication SHA must be taken from the pushed branch (`git rev-parse HEAD` and `git ls-remote origin refs/heads/feat/m10-submission-readiness`) rather than hard-coded into its own commit. Video: **not recorded or linked**. Submission form: <https://docs.google.com/forms/d/e/1FAIpQLSe1ET4U8rOcPM3VGJ8fT5HhigTO9fKuDlsB_wHtB5acWys9XQ/viewform> (not submitted).
+Repository: <https://github.com/thisisanubhav/loan-eligibility-engine> (private). Verified published M10 baseline commit: `b189c16d7fc90b7dc98a3e6f6c3de47086732db5`; M9.1 ancestor: `fe09a9c`. The final M10 tip must be taken from the pushed branch (`git rev-parse HEAD` and `git ls-remote origin refs/heads/feat/m10-submission-readiness`) rather than hard-coded into its own commit. Video: **not recorded or linked**. Submission form: <https://docs.google.com/forms/d/e/1FAIpQLSe1ET4U8rOcPM3VGJ8fT5HhigTO9fKuDlsB_wHtB5acWys9XQ/viewform> (not submitted).
 
 ## Architecture and stack
 
@@ -20,4 +20,4 @@ The isolated clean clone produced one real browser/LocalStack batch with 3 accep
 - The installed n8n SES node cannot send both HTML and plain-text alternatives in one `email.send` call. An actual received SES email—required by the PDF—has not been demonstrated.
 - The required 5–10 minute video does not yet exist. The owner must record it, verify access, and submit the form. The time limit cannot be checked without the assignment email receipt timestamp.
 
-Evaluator accounts specified by the PDF: `ujjwalkala-clickpe`, `HarshSrivastav-Dailype`, `ManishBiswal-clickpe`, `tushar-clickpe`. Invitation status belongs in the final M10 report after GitHub API verification; a pending invite is not accepted access.
+Evaluator accounts specified by the PDF—`ujjwalkala-clickpe`, `HarshSrivastav-Dailype`, `ManishBiswal-clickpe`, `tushar-clickpe`—were invited on 2026-10-15. The GitHub API independently listed all four invitations as **pending**; none is confirmed accepted. GitHub personal-account private repositories do not permit read-only collaborators, so each invitation has the minimum available **write** role, not admin. The owner should monitor acceptance before submitting.
