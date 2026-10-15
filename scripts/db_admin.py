@@ -32,14 +32,34 @@ def runtime_role() -> None:
     with admin_connection("postgres") as conn, conn.cursor() as cursor:
         cursor.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,))
         if cursor.fetchone() is None:
-            cursor.execute(sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(sql.Identifier(role), sql.Literal(password)))
+            cursor.execute(
+                sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(
+                    sql.Identifier(role), sql.Literal(password)
+                )
+            )
         else:
-            cursor.execute(sql.SQL("ALTER ROLE {} PASSWORD {}").format(sql.Identifier(role), sql.Literal(password)))
-        cursor.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(sql.Identifier(os.environ["POSTGRES_DB"]), sql.Identifier(role)))
+            cursor.execute(
+                sql.SQL("ALTER ROLE {} PASSWORD {}").format(
+                    sql.Identifier(role), sql.Literal(password)
+                )
+            )
+        cursor.execute(
+            sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
+                sql.Identifier(os.environ["POSTGRES_DB"]), sql.Identifier(role)
+            )
+        )
     with admin_connection(os.environ["POSTGRES_DB"]) as conn, conn.cursor() as cursor:
         cursor.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(role)))
-        cursor.execute(sql.SQL("GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO {}").format(sql.Identifier(role)))
-        cursor.execute(sql.SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE ON TABLES TO {}").format(sql.Identifier(role)))
+        cursor.execute(
+            sql.SQL("GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO {}").format(
+                sql.Identifier(role)
+            )
+        )
+        cursor.execute(
+            sql.SQL(
+                "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE ON TABLES TO {}"
+            ).format(sql.Identifier(role))
+        )
     print("Runtime role configured without DDL or DELETE privileges (credentials hidden).")
 
 
@@ -50,8 +70,14 @@ def test_database() -> None:
     with admin_connection("postgres", autocommit=True) as conn, conn.cursor() as cursor:
         cursor.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,))
         if cursor.fetchone() is None:
-            cursor.execute(sql.SQL("CREATE DATABASE {} OWNER {} ENCODING 'UTF8'").format(sql.Identifier(name), sql.Identifier(os.environ["POSTGRES_USER"])))
-        cursor.execute(sql.SQL("REVOKE CONNECT ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name)))
+            cursor.execute(
+                sql.SQL("CREATE DATABASE {} OWNER {} ENCODING 'UTF8'").format(
+                    sql.Identifier(name), sql.Identifier(os.environ["POSTGRES_USER"])
+                )
+            )
+        cursor.execute(
+            sql.SQL("REVOKE CONNECT ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name))
+        )
     print("Dedicated test database available (development database untouched).")
 
 
@@ -59,7 +85,10 @@ def check_connection() -> None:
     engine = make_engine()
     try:
         with engine.connect() as conn:
-            if conn.execute(text("SELECT current_database()")).scalar_one() != os.environ["POSTGRES_DB"]:
+            if (
+                conn.execute(text("SELECT current_database()")).scalar_one()
+                != os.environ["POSTGRES_DB"]
+            ):
                 raise ValueError("connected to an unexpected database")
         print("Runtime role connected to the application database (credentials hidden).")
     finally:
@@ -74,7 +103,11 @@ def rotate_local_admin() -> None:
     old = os.environ["POSTGRES_PASSWORD"]
     new = secrets.token_hex(32)
     with admin_connection("postgres") as conn, conn.cursor() as cursor:
-        cursor.execute(sql.SQL("ALTER ROLE {} PASSWORD {}").format(sql.Identifier(os.environ["POSTGRES_USER"]), sql.Literal(new)))
+        cursor.execute(
+            sql.SQL("ALTER ROLE {} PASSWORD {}").format(
+                sql.Identifier(os.environ["POSTGRES_USER"]), sql.Literal(new)
+            )
+        )
     source = env_path.read_text(encoding="utf-8")
     expected = f"POSTGRES_PASSWORD={old}"
     if source.count(expected) != 1:
@@ -85,6 +118,18 @@ def rotate_local_admin() -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in {"runtime-role", "test-database", "check", "rotate-admin"}:
-        raise SystemExit("usage: python -m scripts.db_admin {runtime-role|test-database|check|rotate-admin}")
-    {"runtime-role": runtime_role, "test-database": test_database, "check": check_connection, "rotate-admin": rotate_local_admin}[sys.argv[1]]()
+    if len(sys.argv) != 2 or sys.argv[1] not in {
+        "runtime-role",
+        "test-database",
+        "check",
+        "rotate-admin",
+    }:
+        raise SystemExit(
+            "usage: python -m scripts.db_admin {runtime-role|test-database|check|rotate-admin}"
+        )
+    {
+        "runtime-role": runtime_role,
+        "test-database": test_database,
+        "check": check_connection,
+        "rotate-admin": rotate_local_admin,
+    }[sys.argv[1]]()
