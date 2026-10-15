@@ -24,6 +24,6 @@
 
 - [ ] Check duration is 5–10 minutes, sound/screens are readable, and no PII, secrets, signer payloads or Gmail address are visible.
 - [ ] Host a private/unlisted video at an owner-approved destination, then replace the placeholder in [submission checklist](submission-checklist.md).
-- [ ] Review exact evaluator invitations and pending/accepted status; do not claim a pending invitation was accepted.
+- [ ] Disclose that no evaluator has repository access under the owner's current instruction; do not claim the PDF's access requirement is met.
 - [ ] Owner decides how to explain the missing SES inbox receipt before submitting. Do not fabricate it.
 - [ ] Owner alone submits the repo and actual video links through the form; this checklist does not submit anything.

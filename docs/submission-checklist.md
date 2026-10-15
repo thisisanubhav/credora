@@ -31,14 +31,14 @@ The clean clone's real browser batch `823c5275-6d36-44fa-9a6f-0cf2ec229dfa` acce
 - [ ] Review screenshot/fixture content for PII; do not commit supplied CSV data.
 - [ ] Run tests and offline package checks; do not deploy Serverless.
 - [ ] Push the verified M10 branch to the existing private repository, never with `--force`. Verify remote README, code, migrations, Compose, Serverless, workflows, tests and docs at the pushed SHA.
-- [ ] Invite the four PDF accounts with **read-only** repository access. Record pending versus accepted precisely.
+- [x] Cancel the four previously pending evaluator invitations, per the owner's later instruction. GitHub now lists no pending invitations and only the owner as collaborator. This intentionally leaves the PDF's access requirement unmet.
 
 ## Human completion gate
 
 - [ ] Record a truthful 5–10 minute video using [the script](final-demo-script.md) and [recording checklist](final-demo-checklist.md); paste a real link below only after it exists.
 - [ ] The PDF asks for a received AWS SES email in the video. Under the current prohibition this is **BLOCKED_BY_ZERO_BUDGET / no-real-email authorization**. Mock records are not an alternative receipt. Owner must decide whether to seek explicit future authorization or submit with a disclosed gap.
-- [ ] Confirm evaluator invitations were accepted (pending invitations do not prove access).
+- [ ] Disclose that evaluators have no repository access under the owner's current instruction; do not invite them or claim access was granted.
 - [ ] Owner checks the 72-hour deadline against the original assignment email; receipt time is unknown here.
 - [ ] Owner submits repository and actual video links at [the assignment form](https://docs.google.com/forms/d/e/1FAIpQLSe1ET4U8rOcPM3VGJ8fT5HhigTO9fKuDlsB_wHtB5acWys9XQ/viewform). No form submission is performed by this project.
 
-Repository: <https://github.com/thisisanubhav/loan-eligibility-engine> (private). Video link: **NOT YET AVAILABLE**. Final pushed commit SHA and invitations are recorded in the M10 handoff, not claimed by this pre-publication checklist.
+Repository: <https://github.com/thisisanubhav/loan-eligibility-engine> (private). Video link: **NOT YET AVAILABLE**. No evaluator invitations remain pending.
