@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict
 class ReadyEnvelope(BaseModel):
     model_config = ConfigDict(extra="forbid")
     event_id: uuid.UUID
-    event_type: Literal["upload_batch.ready.v1"]
+    event_type: Literal["upload_batch.ready.v1", "matching.completed.v1"]
     batch_id: uuid.UUID
 
 
@@ -28,7 +28,8 @@ def signature(body: dict[str, Any], timestamp: str, secret: str) -> str:
     return hmac.new(secret.encode(), timestamp.encode() + b"." + canonical_body(body), hashlib.sha256).hexdigest()
 
 
-def verify(body: dict[str, Any], headers: dict[str, str]) -> ReadyEnvelope:
+def verify(body: dict[str, Any], headers: dict[str, str], *,
+           expected_type: str = "upload_batch.ready.v1") -> ReadyEnvelope:
     secret = os.environ.get("MATCHING_WEBHOOK_SECRET", "")
     if len(secret) < 32:
         raise ValueError("webhook_secret_unconfigured")
@@ -45,6 +46,8 @@ def verify(body: dict[str, Any], headers: dict[str, str]) -> ReadyEnvelope:
     if not hmac.compare_digest(supplied, expected):
         raise ValueError("invalid_webhook_signature")
     envelope = ReadyEnvelope.model_validate(body)
+    if envelope.event_type != expected_type:
+        raise ValueError("unexpected_event_type")
     if normalized.get("x-loan-event-id") != str(envelope.event_id):
         raise ValueError("event_header_mismatch")
     return envelope

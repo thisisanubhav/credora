@@ -107,6 +107,11 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
       MATCHING_WEBHOOK_SECRET: ${MATCHING_WEBHOOK_SECRET:?Run python3 scripts/local_env.py extend-m5}
+      NOTIFICATION_MODE: ${NOTIFICATION_MODE:-test}
+      NOTIFICATION_TRANSPORT: ${NOTIFICATION_TRANSPORT:-mock}
+      NOTIFICATION_SES_ENABLED: ${NOTIFICATION_SES_ENABLED:-0}
+      NOTIFICATION_TEST_EMAIL: ${NOTIFICATION_TEST_EMAIL:-local-test@example.invalid}
+      NOTIFICATION_FROM_EMAIL: ${NOTIFICATION_FROM_EMAIL:-verified-sender@example.invalid}
     read_only: true
     volumes:
       - ./apps:/app/apps:ro

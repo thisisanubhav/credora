@@ -32,6 +32,8 @@ REQUIRED = (
     "S3_ENDPOINT_URL", "S3_BUCKET", "CSV_MAX_BYTES", "CSV_CHUNK_SIZE",
     "UPLOAD_URL_TTL_SECONDS", "INGESTION_LEASE_SECONDS",
     "MATCHING_WEBHOOK_SECRET", "MATCHING_WEBHOOK_URL", "ALLOW_SYNTHETIC_DEMO",
+    "NOTIFICATION_MODE", "NOTIFICATION_TRANSPORT", "NOTIFICATION_SES_ENABLED",
+    "NOTIFICATION_TEST_EMAIL", "NOTIFICATION_FROM_EMAIL", "NOTIFICATION_WEBHOOK_URL",
 )
 
 
@@ -87,6 +89,18 @@ def validate(values):
         raise ValueError("MATCHING_WEBHOOK_URL must point to the local matching webhook")
     if values["ALLOW_SYNTHETIC_DEMO"] not in {"0", "1"}:
         raise ValueError("ALLOW_SYNTHETIC_DEMO must be 0 or 1")
+    if values["NOTIFICATION_MODE"] != "test" or values["NOTIFICATION_TRANSPORT"] not in {"mock", "ses"}:
+        raise ValueError("M6 permits test-only mock or SES transport")
+    if values["NOTIFICATION_SES_ENABLED"] not in {"0", "1"}:
+        raise ValueError("NOTIFICATION_SES_ENABLED must be 0 or 1")
+    if values["NOTIFICATION_WEBHOOK_URL"] != f"http://127.0.0.1:{values['N8N_PORT']}/webhook/loan-notifications":
+        raise ValueError("NOTIFICATION_WEBHOOK_URL must point to local n8n")
+    for key in ("NOTIFICATION_TEST_EMAIL", "NOTIFICATION_FROM_EMAIL"):
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", values[key]):
+            raise ValueError(f"{key} must be an email address")
+    if values["NOTIFICATION_TRANSPORT"] == "ses" and (values["NOTIFICATION_SES_ENABLED"] != "1"
+            or any(values[key].endswith("@example.invalid") for key in ("NOTIFICATION_TEST_EMAIL", "NOTIFICATION_FROM_EMAIL"))):
+        raise ValueError("SES requires explicit enablement and non-placeholder verified identities")
     if values["S3_ENDPOINT_URL"] != f"http://127.0.0.1:{values['LOCALSTACK_PORT']}":
         raise ValueError("S3_ENDPOINT_URL must point to loopback LocalStack")
     for key in ("CSV_MAX_BYTES", "CSV_CHUNK_SIZE", "UPLOAD_URL_TTL_SECONDS", "INGESTION_LEASE_SECONDS"):
@@ -187,11 +201,31 @@ def extend_m5():
     print("Local M5 environment ready (secret values hidden).")
 
 
+def extend_m6():
+    """Append safe, mock-only notification defaults to the ignored local environment."""
+    if not LOCAL.is_file():
+        raise ValueError(".env is missing; run `make init`")
+    values = parse_env(LOCAL)
+    template = parse_env(EXAMPLE)
+    keys = ("NOTIFICATION_MODE", "NOTIFICATION_TRANSPORT", "NOTIFICATION_SES_ENABLED",
+            "NOTIFICATION_TEST_EMAIL", "NOTIFICATION_FROM_EMAIL", "NOTIFICATION_WEBHOOK_URL")
+    additions = {key: template[key] for key in keys if key not in values}
+    validate(values | additions)
+    if additions:
+        with LOCAL.open("a", encoding="utf-8") as output:
+            output.write("\n# M6 safe local notification settings\n")
+            for key, value in additions.items():
+                output.write(f"{key}={value}\n")
+        os.chmod(LOCAL, 0o600)
+    print("Local M6 notification environment ready (no real recipient sends enabled).")
+
+
 if __name__ == "__main__":
     try:
-        if len(sys.argv) != 2 or sys.argv[1] not in ("init", "check", "extend", "extend-m3", "extend-m5"):
-            raise ValueError("usage: python3 scripts/local_env.py {init|check|extend|extend-m3|extend-m5}")
-        {"init": init, "check": check, "extend": extend, "extend-m3": extend_m3, "extend-m5": extend_m5}[sys.argv[1]]()
+        if len(sys.argv) != 2 or sys.argv[1] not in ("init", "check", "extend", "extend-m3", "extend-m5", "extend-m6"):
+            raise ValueError("usage: python3 scripts/local_env.py {init|check|extend|extend-m3|extend-m5|extend-m6}")
+        {"init": init, "check": check, "extend": extend, "extend-m3": extend_m3,
+         "extend-m5": extend_m5, "extend-m6": extend_m6}[sys.argv[1]]()
     except (OSError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         sys.exit(1)

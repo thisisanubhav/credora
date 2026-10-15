@@ -319,7 +319,8 @@ class NotificationLog(Base):
     __table_args__ = (
         UniqueConstraint("idempotency_key", name="uq_notification_logs_idempotency"),
         UniqueConstraint("ses_message_id", name="uq_notification_logs_ses_message_id"),
-        CheckConstraint("status IN ('reserved','sending','sent','failed','ambiguous')", name="ck_notification_logs_status"),
+        CheckConstraint("status IN ('reserved','sending','sent','failed','ambiguous','mocked')", name="ck_notification_logs_status"),
+        CheckConstraint("delivery_mode IN ('mock','ses')", name="ck_notification_logs_delivery_mode"),
         CheckConstraint("attempt_count >= 0", name="ck_notification_logs_attempts"),
         CheckConstraint("char_length(recipient_alias) BETWEEN 3 AND 320 AND recipient_alias = lower(recipient_alias)", name="ck_notification_logs_alias"),
         Index("ix_notification_logs_status_updated", "status", "updated_at"),
@@ -331,6 +332,7 @@ class NotificationLog(Base):
     idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
     recipient_alias: Mapped[str] = mapped_column(Text, nullable=False)
     template_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    delivery_mode: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'mock'"))
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'reserved'"))
     ses_message_id: Mapped[str | None] = mapped_column(Text)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))

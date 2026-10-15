@@ -23,13 +23,13 @@ MAX_ATTEMPTS = 12
 
 
 def reconcile_stale(engine: Engine) -> int:
-    """Requeue an acknowledged event only when matching has stopped making progress."""
+    """Requeue an acknowledged event only when its workflow has stopped making progress."""
     now = datetime.now(UTC)
     changed = 0
     with session_scope(engine) as session:
         rows = session.execute(select(OutboxEvent, WorkflowExecution).outerjoin(
             WorkflowExecution, WorkflowExecution.event_id == OutboxEvent.event_id,
-        ).where(OutboxEvent.event_type == "upload_batch.ready.v1",
+        ).where(OutboxEvent.event_type.in_(("upload_batch.ready.v1", "matching.completed.v1")),
                 OutboxEvent.status == "delivered",
                 or_(WorkflowExecution.id.is_(None), WorkflowExecution.status != "succeeded")).with_for_update(
             of=OutboxEvent, skip_locked=True).limit(100)).all()
@@ -43,7 +43,7 @@ def reconcile_stale(engine: Engine) -> int:
             if stalled:
                 event.status = "pending"
                 event.next_attempt_at = now
-                event.last_error_code = "matching_stalled"
+                event.last_error_code = "workflow_stalled"
                 changed += 1
     return changed
 
@@ -52,7 +52,7 @@ def claim_due(engine: Engine, *, only_event_id: uuid.UUID | None = None) -> dict
     now = datetime.now(UTC)
     with session_scope(engine) as session:
         query = select(OutboxEvent).where(
-            OutboxEvent.event_type == "upload_batch.ready.v1",
+            OutboxEvent.event_type.in_(("upload_batch.ready.v1", "matching.completed.v1")),
             or_((OutboxEvent.status == "pending") & (OutboxEvent.next_attempt_at <= now),
                 (OutboxEvent.status == "processing") & (OutboxEvent.claim_expires_at < now)),
         )
@@ -102,7 +102,8 @@ def dispatch_once(engine: Engine, *, client: httpx.Client | None = None,
         return "idle"
     body = {key: claim[key] for key in ("event_id", "event_type", "batch_id")}
     secret = os.environ.get("MATCHING_WEBHOOK_SECRET", "")
-    url = os.environ.get("MATCHING_WEBHOOK_URL", "")
+    url = os.environ.get("MATCHING_WEBHOOK_URL" if claim["event_type"] == "upload_batch.ready.v1"
+                         else "NOTIFICATION_WEBHOOK_URL", "")
     if len(secret) < 32 or not url.startswith(("http://127.0.0.1:", "http://n8n:5678/")):
         finish_attempt(engine, uuid.UUID(claim["event_id"]), claim["claim_expires_at"],
                        delivered=False, permanent=True, error_code="transport_unconfigured")
