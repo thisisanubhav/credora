@@ -46,6 +46,8 @@ class UploadBatch(Base):
         ),
         CheckConstraint("char_length(object_bucket) BETWEEN 1 AND 255", name="ck_upload_batches_bucket"),
         CheckConstraint("char_length(object_key) BETWEEN 1 AND 1024", name="ck_upload_batches_key"),
+        CheckConstraint("idempotency_key_hash IS NULL OR idempotency_key_hash ~ '^[0-9a-f]{64}$'", name="ck_upload_batches_idempotency_hash"),
+        CheckConstraint("request_fingerprint IS NULL OR request_fingerprint ~ '^[0-9a-f]{64}$'", name="ck_upload_batches_fingerprint"),
         Index("ix_upload_batches_status_updated", "status", "updated_at"),
     )
 
@@ -54,6 +56,10 @@ class UploadBatch(Base):
     object_key: Mapped[str] = mapped_column(Text, nullable=False)
     object_version_id: Mapped[str | None] = mapped_column(Text)
     object_etag: Mapped[str | None] = mapped_column(Text)
+    idempotency_key_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    processing_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    processing_lease_expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     content_sha256: Mapped[str | None] = mapped_column(String(64))
     schema_version: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'uploaded'"))
@@ -67,6 +73,24 @@ class UploadBatch(Base):
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     users: Mapped[list[User]] = relationship(back_populates="upload_batch")
+    row_errors: Mapped[list[UploadRowError]] = relationship(back_populates="upload_batch")
+
+
+class UploadRowError(Base):
+    __tablename__ = "upload_row_errors"
+    __table_args__ = (
+        UniqueConstraint("upload_batch_id", "row_number", name="uq_upload_row_errors_batch_row"),
+        CheckConstraint("row_number > 1", name="ck_upload_row_errors_row_number"),
+        CheckConstraint("jsonb_typeof(codes) = 'array' AND jsonb_array_length(codes) > 0", name="ck_upload_row_errors_codes"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    upload_batch_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("upload_batches.id", ondelete="RESTRICT"), nullable=False)
+    row_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    codes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+
+    upload_batch: Mapped[UploadBatch] = relationship(back_populates="row_errors")
 
 
 class User(Base):
@@ -79,6 +103,7 @@ class User(Base):
         CheckConstraint("income_currency ~ '^[A-Z]{3}$'", name="ck_users_currency"),
         CheckConstraint("credit_score BETWEEN 0 AND 1000", name="ck_users_credit_score"),
         CheckConstraint("age BETWEEN 0 AND 130", name="ck_users_age"),
+        CheckConstraint("employment_status_raw IS NULL OR char_length(employment_status_raw) BETWEEN 1 AND 128", name="ck_users_employment_raw"),
         CheckConstraint(
             "employment_status IN ('salaried','self_employed','contract','unemployed',"
             "'retired','student','other')",
@@ -92,9 +117,10 @@ class User(Base):
     source_user_id: Mapped[str] = mapped_column(Text, nullable=False)
     email: Mapped[str] = mapped_column(Text, nullable=False)
     monthly_income: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
-    income_currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    income_currency: Mapped[str | None] = mapped_column(String(3))
     credit_score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     employment_status: Mapped[str] = mapped_column(Text, nullable=False)
+    employment_status_raw: Mapped[str | None] = mapped_column(Text)
     age: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
 

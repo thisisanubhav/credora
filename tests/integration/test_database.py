@@ -40,11 +40,16 @@ def engine():
     config = Config("database/alembic.ini")
     try:
         # Downgrade is destructive ONLY in the dedicated, guarded test database.
+        # M3's NULL-currency users cannot be represented by M2's NOT NULL schema.
+        # This disposable database is rebuilt below; remove those test rows first.
+        if "users" in inspect(database_engine).get_table_names():
+            with database_engine.begin() as connection:
+                connection.execute(text("TRUNCATE TABLE users CASCADE"))
         command.downgrade(config, "base")
         command.upgrade(config, "head")
         assert set(inspect(database_engine).get_table_names()) == {
             "alembic_version", "upload_batches", "users", "product_sources", "loan_products",
-            "matches", "workflow_executions", "outbox_events", "notification_logs", "notification_matches",
+            "matches", "workflow_executions", "outbox_events", "notification_logs", "notification_matches", "upload_row_errors",
         }
         command.downgrade(config, "base")
         assert set(inspect(database_engine).get_table_names()) <= {"alembic_version"}
@@ -147,7 +152,7 @@ def test_migration_constraints_and_indexes(engine):
     assert "uq_loan_products_current" in {i["name"] for i in inspector.get_indexes("loan_products")}
     assert "ix_outbox_events_due" in {i["name"] for i in inspector.get_indexes("outbox_events")}
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "cb5ec7ae0e62"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "2f2c8b144bee"
 
 
 def test_users_precision_and_cross_batch_identity(engine):
