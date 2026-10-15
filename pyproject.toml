@@ -4,9 +4,11 @@ version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "alembic>=1.17,<2",
+  "beautifulsoup4>=4.13,<5",
   "boto3>=1.40,<2",
   "email-validator>=2.3,<3",
   "fastapi>=0.120,<1",
+  "httpx>=0.28,<1",
   "psycopg[binary]>=3.2,<4",
   "pydantic>=2.12,<3",
   "SQLAlchemy>=2.0,<2.1",
@@ -31,7 +33,7 @@ line-length = 100
 
 [tool.mypy]
 python_version = "3.12"
-files = ["apps/api", "services/common", "services/ingestion", "tests/integration", "tests/ingestion"]
+files = ["apps/api", "apps/discovery_api", "services/common", "services/ingestion", "services/discovery", "tests/integration", "tests/ingestion", "tests/discovery"]
 ignore_missing_imports = false
 
 [[tool.mypy.overrides]]
