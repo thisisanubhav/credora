@@ -1,6 +1,6 @@
 COMPOSE = docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml
 
-.PHONY: init check-env config up down logs status smoke
+.PHONY: init check-env config up down logs status smoke db-upgrade db-status db-role db-connect db-test lint typecheck
 
 init:
 	python3 scripts/local_env.py init
@@ -25,3 +25,25 @@ status: check-env
 
 smoke: config
 	python3 scripts/smoke_infrastructure.py
+
+db-upgrade: check-env
+	uv run --frozen --env-file .env alembic -c database/alembic.ini upgrade head
+
+db-status: check-env
+	uv run --frozen --env-file .env alembic -c database/alembic.ini current
+
+db-role: check-env
+	uv run --frozen --env-file .env python -m scripts.db_admin runtime-role
+
+db-connect: check-env
+	uv run --frozen --env-file .env python -m scripts.db_admin check
+
+db-test: check-env
+	uv run --frozen --env-file .env python -m scripts.db_admin test-database
+	uv run --frozen --env-file .env pytest tests/integration
+
+lint:
+	uv run --frozen ruff check services scripts/db_admin.py tests/integration database/migrations
+
+typecheck:
+	uv run --frozen mypy
