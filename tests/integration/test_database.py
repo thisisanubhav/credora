@@ -147,7 +147,7 @@ def test_migration_constraints_and_indexes(engine):
     assert "uq_loan_products_current" in {i["name"] for i in inspector.get_indexes("loan_products")}
     assert "ix_outbox_events_due" in {i["name"] for i in inspector.get_indexes("outbox_events")}
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "1d98b8c6edf1"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "cb5ec7ae0e62"
 
 
 def test_users_precision_and_cross_batch_identity(engine):
@@ -195,6 +195,32 @@ def test_product_versions_and_current_uniqueness(engine):
     with pytest.raises(IntegrityError), session_scope(engine) as session:
         current = session.get(LoanProduct, new_id)
         product(session, source=current.source, version=3)
+
+
+def test_unverified_or_empty_product_rules_cannot_be_marked_verified(engine):
+    with pytest.raises(IntegrityError), session_scope(engine) as session:
+        item = product(session)
+        item.verification_status = "verified"
+        session.flush()
+    with session_scope(engine) as session:
+        item = product(session)
+        item.eligibility_rules = {
+            "schema_version": 1, "completeness": "complete",
+            "all": [{"field": "age", "operator": "gte", "value": "18", "unit": "years",
+                     "evidence": {"quote": "Synthetic fixture, age 18", "source_url": item.source_url}}],
+            "any": [], "ambiguous": [],
+        }
+        item.verification_status = "verified"
+        session.flush()
+        assert item.verification_status == "verified"
+
+
+def test_negative_max_rate_rejected(engine):
+    with pytest.raises(IntegrityError), session_scope(engine) as session:
+        item = product(session)
+        item.interest_rate_min_pct = None
+        item.interest_rate_max_pct = Decimal("-1.0000")
+        session.flush()
 
 
 def test_match_idempotency_and_foreign_key(engine):
