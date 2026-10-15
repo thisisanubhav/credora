@@ -118,7 +118,8 @@ def check_runtime(values):
     app_tables = set(compose("exec", "-T", "postgres", "sh", "-c", app_command, "sh", query).stdout.splitlines())
     n8n_tables = set(compose("exec", "-T", "postgres", "sh", "-c", n8n_command, "sh", query).stdout.splitlines())
     m2_tables = {"alembic_version", "upload_batches", "users", "product_sources", "loan_products",
-                 "matches", "workflow_executions", "outbox_events", "notification_logs", "notification_matches", "upload_row_errors"}
+                 "matches", "workflow_executions", "outbox_events", "notification_logs", "notification_matches", "upload_row_errors",
+                 "internal_request_nonces"}
     require(not app_tables or app_tables == m2_tables, "unexpected application database tables")
     require(n8n_tables and not (n8n_tables & m2_tables), "n8n persistence is not isolated")
     print("PASS: application schema is isolated from n8n internal tables")

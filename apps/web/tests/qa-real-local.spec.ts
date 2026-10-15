@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 // Opt-in: requires local FastAPI, LocalStack, worker, dispatcher and published n8n B/C.
 test("real browser upload reaches local ingestion and exposes a batch reference", async ({ page }) => {
   expect(process.env.NEXT_PUBLIC_ENABLE_DEMO_UPLOAD).toBe("1");
-  const output = resolve(process.cwd(), "../../artifacts/m9");
+  const output = resolve(process.cwd(), process.env.QA_SCREENSHOT_DIR ?? "../../artifacts/m9");
   mkdirSync(output, { recursive: true });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));

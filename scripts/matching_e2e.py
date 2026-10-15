@@ -64,7 +64,12 @@ def main() -> None:
                     OutboxEvent.event_type == "upload_batch.ready.v1"))
                 assert ready is not None and ready.status == "pending"
                 event_id = ready.event_id
-            outcome = dispatch_once(engine, only_event_id=event_id)
+            outcome = "idle"
+            due_deadline = time.monotonic() + 5
+            while outcome == "idle" and time.monotonic() < due_deadline:
+                outcome = dispatch_once(engine, only_event_id=event_id)
+                if outcome == "idle":
+                    time.sleep(0.1)
             assert outcome == "delivered", outcome
             deadline = time.monotonic() + 60
             while True:

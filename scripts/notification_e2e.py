@@ -7,6 +7,7 @@ import time
 import uuid
 
 import httpx
+import psycopg
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
@@ -40,6 +41,46 @@ def _wait_for_run(engine, batch_id: uuid.UUID, kind: str) -> WorkflowExecution: 
                 return run
         time.sleep(1)
     raise RuntimeError(f"{kind} workflow did not finish for batch {batch_id}")
+
+
+def _dispatch_when_due(engine, event_id: uuid.UUID) -> None:  # type: ignore[no-untyped-def]
+    # PostgreSQL's transaction clock may put next_attempt_at just after the
+    # host clock; a one-shot assertion must tolerate a briefly not-yet-due row.
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        outcome = dispatch_once(engine, only_event_id=event_id)
+        if outcome == "delivered":
+            return
+        if outcome != "idle":
+            raise RuntimeError(f"outbox dispatch returned {outcome}")
+        time.sleep(0.1)
+    raise RuntimeError("outbox event did not become due")
+
+
+def _assert_n8n_terminal(run_id: uuid.UUID, workflow_id: str, final_node: str) -> int:
+    """Cross-check n8n's own terminal record, not only the helper's run state."""
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        with psycopg.connect(host=os.getenv("POSTGRES_HOST", "127.0.0.1"),
+                             port=int(os.getenv("POSTGRES_PORT", "5432")),
+                             dbname=os.environ["N8N_DB_NAME"], user=os.environ["N8N_DB_USER"],
+                             password=os.environ["N8N_DB_PASSWORD"]) as connection:
+            row = connection.execute(
+                'SELECT e.id, e.status, e."stoppedAt", '
+                "position(%s in d.data::text) > 0 "
+                'FROM execution_entity e JOIN execution_data d ON d."executionId" = e.id '
+                'WHERE e."workflowId" = %s AND position(%s in d.data::text) > 0 '
+                'ORDER BY e.id DESC LIMIT 1',
+                (final_node, workflow_id, str(run_id)),
+            ).fetchone()
+        if row is not None:
+            execution_id, status, stopped_at, reached_final = row
+            if status == "success" and stopped_at is not None and reached_final:
+                return int(execution_id)
+            if status == "error":
+                raise RuntimeError(f"n8n {workflow_id} execution {execution_id} errored")
+        time.sleep(0.2)
+    raise RuntimeError(f"n8n {workflow_id} did not reach terminal success")
 
 
 def main() -> None:
@@ -76,7 +117,7 @@ def main() -> None:
                                                               OutboxEvent.event_type == "upload_batch.ready.v1"))
             assert ready is not None
             ready_id = ready.event_id
-        assert dispatch_once(engine, only_event_id=ready_id) == "delivered"
+        _dispatch_when_due(engine, ready_id)
         matching = _wait_for_run(engine, batch_id, "matching")
         with session_scope(engine) as session:
             matches = session.execute(select(User.source_user_id, func.count(Match.id)).outerjoin(
@@ -87,8 +128,11 @@ def main() -> None:
                                                                   OutboxEvent.event_type == "matching.completed.v1"))
             assert completed is not None
             completed_id = completed.event_id
-        assert dispatch_once(engine, only_event_id=completed_id) == "delivered"
+        _dispatch_when_due(engine, completed_id)
         notification = _wait_for_run(engine, batch_id, "notification")
+        matching_execution = _assert_n8n_terminal(matching.id, "loanMatchingM5", "Execution Summary")
+        notification_execution = _assert_n8n_terminal(notification.id, "loanNotificationsM6",
+                                                       "Notification Execution Summary")
         with session_scope(engine) as session:
             logs = session.scalars(select(NotificationLog).where(
                 NotificationLog.workflow_execution_id == notification.id)).all()
@@ -114,6 +158,7 @@ def main() -> None:
             assert before == after == 2
         print(f"PASS: batch={batch_id} matching_run={matching.id} notification_run={notification.id}; "
               "3 matches grouped into 2 mock-only notifications (1+2); 1 user had none; signed replay added zero.")
+        print(f"PASS: terminal n8n executions B={matching_execution} C={notification_execution} reached summaries.")
         print("PASS: no SES call or actual email delivery occurred; CSV addresses were never recipients.")
     finally:
         engine.dispose()

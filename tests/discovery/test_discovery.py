@@ -7,6 +7,8 @@ import importlib
 import json
 import logging
 import os
+import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from pathlib import Path
@@ -19,6 +21,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select, text
 
 from services.common.db import make_engine, session_scope
+from services.common.internal_auth import sign, verify_and_reserve
 from services.common.models import LoanProduct, WorkflowExecution
 from services.discovery.crawler import CrawlError, fetch_source
 from services.discovery.extraction import PageEvidence, extract_deterministic, validate_candidate
@@ -249,19 +252,33 @@ def test_partial_failure_execution_tracking(clean_db, page):
 
 def test_fixture_api_pipeline(clean_db, page, monkeypatch):
     monkeypatch.setattr(api, "_engine", lambda: clean_db)
+    monkeypatch.setattr(api, "make_engine", lambda: clean_db)
     monkeypatch.setattr(api, "fetch_source", lambda _key: page.model_dump(mode="json"))
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("INTERNAL_STEP_KEY_ID", "test-v1")
+    monkeypatch.setenv("INTERNAL_STEP_SECRET", "t" * 64)
     with TestClient(api.app) as client:
-        run = client.post("/discovery/runs").json()
+        def signed_post(path, body):
+            timestamp = str(int(time.time()))
+            nonce = str(uuid.uuid4())
+            return client.post(path, json=body, headers={
+                "X-Internal-Key-Id": "test-v1", "X-Internal-Timestamp": timestamp,
+                "X-Internal-Nonce": nonce,
+                "X-Internal-Signature": sign(body, key_id="test-v1", timestamp=timestamp,
+                                             nonce=nonce, method="POST", path=path, secret="t" * 64),
+            })
+
+        assert client.post("/discovery/runs", json={}).status_code == 401
+        run = signed_post("/discovery/runs", {}).json()
         envelope = {"run_id": run["run_id"], "source_key": "sbi"}
         for step in ("fetch", "extract", "gemini", "validate", "persist", "record"):
-            response = client.post(f"/discovery/{step}", json=envelope)
+            response = signed_post(f"/discovery/{step}", envelope)
             assert response.status_code == 200, step
             envelope = response.json()
         assert envelope["outcome"] == "created"
         assert envelope["llm_status"] == "unavailable"
         assert client.get("/health").status_code == 200
-        assert client.post("/discovery/fetch", json={"source_key": "127.0.0.1"}).status_code == 422
+        assert signed_post("/discovery/fetch", {"source_key": "127.0.0.1"}).status_code == 422
 
 
 def test_workflow_json_structure_and_no_secrets():
@@ -272,4 +289,69 @@ def test_workflow_json_structure_and_no_secrets():
             "Extract Deterministic Criteria", "Needs Gemini?", "Gemini Qualitative Extraction",
             "Validate Source Evidence", "Persist Product Version", "Execution Summary"} <= names
     assert "GEMINI_API_KEY" not in raw and "APP_DB_PASSWORD" not in raw
-    assert workflow["connections"]["Persist Product Version"]["main"][0][0]["node"] == "Record Source Outcome"
+    assert workflow["connections"]["Persist Product Version"]["main"][0][0]["node"] == "Sign Record Source Outcome"
+    assert workflow["connections"]["Sign Record Source Outcome"]["main"][0][0]["node"] == "Record Source Outcome"
+
+
+def test_internal_hmac_replay_expiry_route_and_rotation(clean_db, monkeypatch):
+    monkeypatch.setenv("INTERNAL_STEP_KEY_ID", "new")
+    monkeypatch.setenv("INTERNAL_STEP_SECRET", "n" * 64)
+    monkeypatch.setenv("INTERNAL_STEP_PREVIOUS_KEY_ID", "old")
+    monkeypatch.setenv("INTERNAL_STEP_PREVIOUS_SECRET", "o" * 64)
+    body = {"run_id": "test", "nested": {"z": 2, "a": 1}}
+    path = "/matching/batch"
+    timestamp = str(int(time.time()))
+
+    def headers(key_id, secret, *, ts=timestamp, nonce=None):
+        nonce = nonce or str(uuid.uuid4())
+        return {"X-Internal-Key-Id": key_id, "X-Internal-Timestamp": ts,
+                "X-Internal-Nonce": nonce, "X-Internal-Signature": sign(
+                    body, key_id=key_id, timestamp=ts, nonce=nonce,
+                    method="POST", path=path, secret=secret)}
+
+    current = headers("new", "n" * 64)
+    assert verify_and_reserve(clean_db, body, current, method="POST", path=path)
+    assert not verify_and_reserve(clean_db, body, current, method="POST", path=path)
+    assert not verify_and_reserve(clean_db, body, headers("new", "wrong" * 12), method="POST", path=path)
+    assert not verify_and_reserve(clean_db, body, headers("new", "n" * 64), method="POST", path="/matching/complete")
+    assert not verify_and_reserve(clean_db, body, headers("new", "n" * 64,
+                                                           ts=str(int(time.time()) - 301)), method="POST", path=path)
+    assert verify_and_reserve(clean_db, body, headers("old", "o" * 64), method="POST", path=path)
+
+
+def test_all_internal_n8n_steps_are_signed_and_webhooks_save_terminal_runs():
+    for filename in ("discovery.json", "matching.json", "notifications.json"):
+        raw = (ROOT / "workflows" / filename).read_text(encoding="utf-8")
+        workflow = json.loads(raw)
+        nodes = {node["name"]: node for node in workflow["nodes"]}
+        for node in workflow["nodes"]:
+            if node["type"] != "n8n-nodes-base.httpRequest":
+                continue
+            if not node["parameters"].get("url", "").startswith("http://discovery:8001/"):
+                continue
+            assert "Sign " + node["name"] in nodes
+            assert node["parameters"]["jsonBody"] == "={{ JSON.stringify($json.payload) }}"
+            names = {item["name"] for item in node["parameters"]["headerParameters"]["parameters"]}
+            assert names == {"X-Internal-Key-Id", "X-Internal-Timestamp",
+                             "X-Internal-Nonce", "X-Internal-Signature"}
+        assert "INTERNAL_STEP_SECRET=" not in raw
+        if filename != "discovery.json":
+            assert workflow["settings"]["saveDataSuccessExecution"] == "all"
+            assert workflow["settings"]["saveDataErrorExecution"] == "all"
+
+
+def test_concurrent_internal_nonce_claim_has_one_winner(clean_db, monkeypatch):
+    monkeypatch.setenv("INTERNAL_STEP_KEY_ID", "concurrent")
+    monkeypatch.setenv("INTERNAL_STEP_SECRET", "c" * 64)
+    body = {"run_id": "concurrent-fixture"}
+    timestamp = str(int(time.time()))
+    nonce = str(uuid.uuid4())
+    headers = {"X-Internal-Key-Id": "concurrent", "X-Internal-Timestamp": timestamp,
+               "X-Internal-Nonce": nonce,
+               "X-Internal-Signature": sign(body, key_id="concurrent", timestamp=timestamp,
+                                            nonce=nonce, method="POST", path="/matching/batch",
+                                            secret="c" * 64)}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda _: verify_and_reserve(
+            clean_db, body, headers, method="POST", path="/matching/batch"), range(2)))
+    assert sorted(outcomes) == [False, True]
