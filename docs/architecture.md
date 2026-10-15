@@ -78,6 +78,8 @@ flowchart TB
 
 For M3 local development, FastAPI runs on loopback, PostgreSQL and n8n run in Compose, and LocalStack 4.11.0 emulates S3 on loopback. The E2E command feeds a real S3-compatible presigned POST to LocalStack, then invokes the same Lambda handler with a synthesized S3 `ObjectCreated` envelope. Automatic S3→Lambda delivery, AWS SES, and Gemini are not running locally. A real cloud deployment is optional.
 
+M4 adds a non-public Compose `discovery` service at `http://discovery:8001` for testable bounded crawl, extraction, evidence validation, and versioned persistence steps. n8n Workflow A explicitly schedules, fans out, chooses the optional Gemini branch, sequences these HTTP steps, and records each source outcome. The service has no published port; n8n reaches it over the Compose network. This local placement is not yet a production deployment design: if n8n is moved to AWS, keep the helper private and authenticate its requests. See [Workflow A](discovery-workflow.md) and [source policy](loan-sources.md). Missing Gemini credentials or incomplete bank criteria never make a product matchable.
+
 ## Component responsibilities
 
 | Component | Responsibility | Explicit non-responsibility |

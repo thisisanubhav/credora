@@ -2,7 +2,7 @@
 
 An event-driven platform that ingests CSV batches, discovers personal-loan products, evaluates eligibility, and sends test notifications through workflows orchestrated by self-hosted n8n.
 
-> **Current phase:** M3 CSV ingestion. Local PostgreSQL, n8n, and S3-compatible LocalStack run through Compose. The upload API, streamed worker, batch tracking, and transactional outbox are implemented. Automatic local S3 notifications, n8n workflows, frontend, AWS resources, and paid integrations are not implemented or provisioned.
+> **Current phase:** M4 loan discovery. Local PostgreSQL, n8n, S3-compatible LocalStack, and an internal discovery service run through Compose. Workflow A is importable and has been executed against two official public loan pages. Its current live products require review; matching/notification workflows, frontend, AWS resources, and paid integrations are not implemented or provisioned.
 
 ## Planned flow
 
@@ -107,7 +107,7 @@ PostgreSQL initializes both databases in UTF-8. The official entrypoint creates 
 
 ### Access, inspection, and shutdown
 
-- Open the n8n editor at <http://localhost:5678> (or the configured local `N8N_PORT`). Complete n8n's first-run owner setup locally. No workflows are installed yet.
+- Open the n8n editor at <http://localhost:5678> (or the configured local `N8N_PORT`). Complete n8n's first-run owner setup locally. Import Workflow A with `make discovery-import`.
 - Connect a database client to `127.0.0.1:5432` (or `POSTGRES_PORT`). Use the application database name and local bootstrap login from `.env`. Inside Compose, the host is `postgres` and the port is `5432`. n8n itself uses its separate `N8N_DB_NAME` and `N8N_DB_USER`.
 - `make status` shows container state and health. `make logs` follows the last 100 log lines; stop following with Ctrl+C. Logs should not contain credentials; do not paste private log output into public issues.
 - `make down` stops and removes containers/network while preserving both data volumes. `make up` reuses them.
@@ -181,5 +181,19 @@ The [CSV contract](docs/csv-contract.md) specifies exact sample headers, validat
 
 M3 settings in `.env`: `LOCALSTACK_PORT` (loopback emulator), `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (local dummy only), `AWS_DEFAULT_REGION`, `S3_ENDPOINT_URL`, `S3_BUCKET`, `CSV_MAX_BYTES`, `CSV_CHUNK_SIZE`, `UPLOAD_URL_TTL_SECONDS`, and `INGESTION_LEASE_SECONDS`. The S3 bucket has a persistent named volume. `make down` preserves it; `docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml down --volumes` removes **all three** project data volumes and is destructive. Check the Compose project name and back up wanted data first.
 
-M4 is product discovery. M3 does not crawl, match, notify, or send mail.
+### Loan product discovery (M4)
+
+Workflow A is the real n8n export at [`workflows/discovery.json`](workflows/discovery.json). It schedules or manually starts a source-respectful crawl of the official [SBI](https://sbi.bank.in/web/personal-banking/loans/personal-loans/sbi-personal-loan) and [Axis Bank](https://www.axis.bank.in/loans/personal-loan) personal-loan pages. The internal `discovery` Compose service performs bounded fetch/extract/validate/persist steps; n8n controls their order, the optional Gemini branch, and execution tracking. Only source-grounded partial criteria are stored. Live products remain `review_required`, not guaranteed eligibility. See [source research](docs/loan-sources.md) and the [node-by-node workflow guide](docs/discovery-workflow.md).
+
+```sh
+uv sync --frozen
+make up
+make db-upgrade
+make db-role
+make discovery-test    # Fixture tests; dedicated discovery_test database
+make discovery-import  # Import export into the running local n8n instance
+make discovery-run     # Live manual n8n execution; temporarily restarts editor
+```
+
+`GEMINI_API_KEY` is optional and absent by default. `GEMINI_MODEL` defaults to Google's documented `gemini-3.8-flash`; a missing key leaves Gemini-dependent checks blocked and does not prevent deterministic discovery. Never commit the key or paste it into n8n nodes. The n8n workflow is imported inactive; activate its 24-hour schedule explicitly in the editor only when approved for periodic access. The internal service publishes no host port. PostgreSQL migrations remain separate from the restricted runtime role. M4 does not crawl arbitrary URLs, match users, or send email.
 

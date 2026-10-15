@@ -109,6 +109,8 @@ The files below are planned paths, not evidence that they already exist.
 
 ## M4 - Loan product discovery workflow
 
+**Implementation note (2026-10-15):** Workflow A, its private Compose helper, two official source adapters, additive criterion-state/currency migration, fixture tests, and local live n8n execution are implemented. The original plan's `database/seeds/product_sources.*` was not added: allowlisted source rows are created transactionally at run start, avoiding duplicate configuration. No separate Gemini fixtures directory is needed because mock responses live in focused tests. HTTP conditional requests are deferred: sites did not expose a stable conditional-fetch contract in this verification, and unchanged parsed content is already deduplicated. Both live products are `review_required` because published conditions are incomplete; that is a deliberate fail-closed result, not a verified-match claim. See `docs/discovery-workflow.md` for remaining operational limits.
+
 **Objective:** Build Workflow A for source-respectful, provenance-preserving discovery of verified product versions.
 
 **Implementation scope**
