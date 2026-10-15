@@ -62,7 +62,7 @@ def check_static(config):
     print("PASS: Compose structure, health checks, startup order, named volumes, and loopback bindings")
 
 
-def check_runtime(config, values):
+def check_runtime(values):
     ids = {}
     for name in ("postgres", "n8n"):
         ids[name] = compose("ps", "-q", name).stdout.strip()
@@ -104,6 +104,11 @@ def check_runtime(config, values):
     require(n8n == f"{values['N8N_DB_NAME']}|{values['N8N_DB_USER']}|UTF8", "n8n database auth/name/encoding failed")
     print("PASS: authenticated UTF-8 connections to separate application and n8n databases")
 
+    cross_db_command = 'PGPASSWORD="$N8N_DB_PASSWORD" psql -X -qAt -h 127.0.0.1 -U "$N8N_DB_USER" -d "$POSTGRES_DB" -c "SELECT 1"'
+    cross_db = compose("exec", "-T", "postgres", "sh", "-c", cross_db_command, check=False)
+    require(cross_db.returncode != 0, "n8n internal role can connect to the application database")
+    print("PASS: n8n internal role cannot connect to the application database")
+
     query = "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"
     app_tables = compose("exec", "-T", "postgres", "sh", "-c", app_command, "sh", query).stdout.strip()
     n8n_tables = compose("exec", "-T", "postgres", "sh", "-c", n8n_command, "sh", query).stdout.strip()
@@ -133,7 +138,7 @@ def main():
     if run(["docker", "info", "--format", "{{.ServerVersion}}"], check=False).returncode:
         print("BLOCKED: Docker daemon unavailable; runtime checks were not run")
         return 2
-    check_runtime(config, values)
+    check_runtime(values)
     print("PASS: all M1 infrastructure smoke checks")
     return 0
 
