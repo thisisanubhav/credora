@@ -2,7 +2,7 @@
 
 An event-driven platform that ingests CSV batches, discovers personal-loan products, evaluates eligibility, and sends test notifications through workflows orchestrated by self-hosted n8n.
 
-> **Current phase:** M4 loan discovery. Local PostgreSQL, n8n, S3-compatible LocalStack, and an internal discovery service run through Compose. Workflow A is importable and has been executed against two official public loan pages. Its current live products require review; matching/notification workflows, frontend, AWS resources, and paid integrations are not implemented or provisioned.
+> **Current phase:** M5 optimized matching. Workflow A discovers source-grounded bank products; Workflow B receives signed outbox events through self-hosted n8n, uses batch-scoped SQL and deterministic rules, and commits potential matches plus a completion event. Live SBI/Axis products remain review-required and unmatchable; synthetic demo products are isolated. Notifications, frontend, AWS resources, and paid integrations are not implemented or provisioned.
 
 ## Planned flow
 
@@ -196,4 +196,23 @@ make discovery-run     # Live manual n8n execution; temporarily restarts editor
 ```
 
 `GEMINI_API_KEY` is optional and absent by default. `GEMINI_MODEL` defaults to Google's documented `gemini-3.8-flash`; a missing key leaves Gemini-dependent checks blocked and does not prevent deterministic discovery. Never commit the key or paste it into n8n nodes. The n8n workflow is imported inactive; activate its 24-hour schedule explicitly in the editor only when approved for periodic access. The internal service publishes no host port. PostgreSQL migrations remain separate from the restricted runtime role. M4 does not crawl arbitrary URLs, match users, or send email.
+
+### Optimized eligibility matching (M5)
+
+For an existing checkout, run `python3 scripts/local_env.py extend-m5` once to create the ignored local HMAC secret and enable the explicitly local synthetic-demo mode. Then run:
+
+```sh
+make up
+make db-upgrade
+make db-role
+make matching-test
+make matching-import
+docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml exec -T n8n n8n publish:workflow --id=loanMatchingM5
+docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml restart n8n
+uv run --frozen --env-file .env python -m scripts.seed_matching_demo
+make matching-e2e
+make matching-benchmark
+```
+
+`make matching-dispatch` processes one due outbox event; run `uv run --frozen --env-file .env python -m services.eligibility.dispatcher --watch` for local continuous dispatch/reconciliation. Do not enable `ALLOW_SYNTHETIC_DEMO=1` or expose the HTTP webhook in production. The [matching policy](docs/matching-policy.md), [workflow/recovery guide](docs/matching-workflow.md), and [benchmark](docs/matching-benchmark.md) explain fail-closed decisions, HMAC/replay protection, page receipts, and measured selectivity. M5 never sends an email or claims approval.
 

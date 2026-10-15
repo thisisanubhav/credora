@@ -80,6 +80,8 @@ For M3 local development, FastAPI runs on loopback, PostgreSQL and n8n run in Co
 
 M4 adds a non-public Compose `discovery` service at `http://discovery:8001` for testable bounded crawl, extraction, evidence validation, and versioned persistence steps. n8n Workflow A explicitly schedules, fans out, chooses the optional Gemini branch, sequences these HTTP steps, and records each source outcome. The service has no published port; n8n reaches it over the Compose network. This local placement is not yet a production deployment design: if n8n is moved to AWS, keep the helper private and authenticate its requests. See [Workflow A](discovery-workflow.md) and [source policy](loan-sources.md). Missing Gemini credentials or incomplete bank criteria never make a product matchable.
 
+M5 adds Workflow B to the same self-hosted n8n instance and reuses the private helper for narrowly scoped matching steps. A local Python dispatcher leases committed `upload_batch.ready.v1` outbox rows, signs only UUIDs with HMAC, and POSTs to n8n's published webhook. n8n verifies and durably claims before HTTP 202, then orchestrates batch metadata, a 20-user/at-most-1,000-pair SQL page, deterministic decisions, optional capped Gemini advice, idempotent match writes, and an atomic `matching.completed.v1` outbox event for M6. The dispatcher reconciles stale acknowledged executions. See [matching workflow](matching-workflow.md) and [fail-closed policy](matching-policy.md). The earlier raw-request-body signature sketch is concretized as canonical sorted JSON because n8n forwards a parsed webhook body; the signed field set and timestamp are validated before any batch lookup.
+
 ## Component responsibilities
 
 | Component | Responsibility | Explicit non-responsibility |

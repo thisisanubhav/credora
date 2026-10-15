@@ -2,6 +2,8 @@
 
 ## Goal and safety invariant
 
+**M5 measured implementation:** The active SQL is `services/eligibility/sql/prefilter.sql`, driven by a 20-user keyset page rather than the conceptual all-batch query below. This caps transfer to at most 20 × the current-product count per n8n step. It excludes hard failures and synthetic products for ordinary batches, then the deterministic evaluator rechecks the full rule document. The reproducible actual-sample measurements and query plan are in [matching-benchmark.md](matching-benchmark.md); the numeric values below remain the assignment's illustrative scenario, not separate measurements.
+
 For 10,000 users and 50 products, the naive Cartesian space is 500,000 user-product pairs. The goal is not to pretend those relationships do not exist; it is to evaluate cheap, selective predicates close to the data, transfer only surviving candidates into n8n, and reserve LLM work for a small, explicitly bounded ambiguity set.
 
 The safety invariant is:

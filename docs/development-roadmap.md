@@ -142,6 +142,8 @@ The files below are planned paths, not evidence that they already exist.
 
 ## M5 - Optimized eligibility matching
 
+**Implementation note (2026-10-15):** Workflow B, signed dispatcher, guarded synthetic fixtures, SQL-keyset pages, deterministic rules, optional capped advisory, completion outbox event, and local E2E are implemented. The earlier proposed n8n-native PostgreSQL node was replaced by a narrow private helper endpoint containing the version-controlled parameterized SQL; n8n still owns every stage and branch, while credentials remain out of the export. Synthetic demo rows are isolated by `upload_batches.is_demo` and `product_sources.source_type`. The implementation uses canonical-JSON HMAC because n8n exposes a parsed body. See the matching policy and workflow guide for remaining operational risks.
+
 **Objective:** Build Workflow B and prove the multi-stage funnel is correct, bounded, idempotent, and measurable.
 
 **Implementation scope**
