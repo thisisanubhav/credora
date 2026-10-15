@@ -34,3 +34,7 @@ The scored categories in the PDF (n8n 30, cloud 20, backend 30, documentation/pr
 - Frontend: Playwright checks responsive overflow (390/768 px), keyboard focus, drag/drop, bounded polling, duplicate submit, expiry simulation, backend failures and row-error pagination. The real browser page emitted no uncaught page errors.
 
 See [security audit](security-audit.md), [performance report](performance-report.md), [bug fixes](bug-fixes.md), and [test evidence](final-test-evidence.md). No M10 submission work was started.
+
+## M9.1 superseding evidence
+
+The B/C `running` caveat above describes the **M9** state. M9.1 isolated it to explicit n8n `saveDataSuccessExecution=none` settings in this installed version. After setting success/error retention to `all`, real B/C webhook executions 159/160 were terminal `success`, and an invalid signed-event path produced terminal `error` executions 162/163. Workflow A also completed an actual scheduled `trigger` execution 155; the 24-hour schedule was restored and remains active. The private helper now rejects unsigned requests and durably fences replayed HMAC nonces. Updated requirement statuses and exact remaining gaps are in [M9.1 compliance](assignment-compliance-final.md); do not reinterpret the historical M9 rows as if these repairs existed then.

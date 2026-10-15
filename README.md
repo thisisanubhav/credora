@@ -2,7 +2,7 @@
 
 An event-driven platform that ingests CSV batches, discovers personal-loan products, evaluates eligibility, and sends test notifications through workflows orchestrated by self-hosted n8n.
 
-> **Current phase:** M9 local QA. The browser-to-n8n path has been exercised with clearly labelled synthetic fixtures and mock-only notifications. AWS resources have not been provisioned; no real email has been sent.
+> **Current phase:** M9.1 local compliance recovery. The browser-to-n8n path now has terminal B/C execution evidence with clearly labelled synthetic fixtures and mock-only notifications. AWS resources have not been provisioned; no real email has been sent.
 
 ## Planned flow
 
@@ -30,6 +30,8 @@ See the [architecture](docs/architecture.md) for diagrams and failure handling.
 - [Performance measurements](docs/performance-report.md)
 - [Bug fixes](docs/bug-fixes.md)
 - [Sanitized final test evidence](docs/final-test-evidence.md)
+- [M9.1 requirement-by-requirement compliance](docs/assignment-compliance-final.md)
+- [M9.1 remediation and terminal workflow evidence](docs/m9-1-remediation.md)
 
 ## Proposed repository layout
 
@@ -282,4 +284,10 @@ See [deployment design](docs/aws-deployment-design.md), [conditional guide](docs
 ### M9 local QA replay
 
 `make up && make s3-init` restores the local containers and emulator bucket. Keep Workflow B/C imported and published, and run the local worker plus dispatcher watchers as documented above. For the opt-in browser-to-synthetic demonstration only, set `NEXT_PUBLIC_ENABLE_DEMO_UPLOAD=1` for the Next.js development server (the API also requires local `ALLOW_SYNTHETIC_DEMO=1`); select the conspicuously labelled checkbox. AWS mode rejects synthetic uploads regardless of that local switch. Run `NEXT_PUBLIC_ENABLE_DEMO_UPLOAD=1 npx playwright test tests/qa-real-local.spec.ts` from `apps/web` while FastAPI, the worker and dispatcher are running. The CSV goes from the real browser to LocalStack; n8n B/C may finish after the UI's ingestion-terminal view. All notifications are mock-only. The 10,000-row parser measurement is `uv run --frozen --env-file .env python -m benchmarks.ingestion.run`; it uses a guarded `_qa_ingestion_test` database and prints no sample emails. See the M9 audit links above for execution IDs, failure recovery and limitations.
+
+### M9.1 authenticated n8n steps and terminal executions
+
+Existing local checkouts: run `python3 scripts/local_env.py extend-m9-1` once to add a distinct ignored n8n-to-helper signing key, then `make up db-upgrade db-role`. Reimport all three workflow JSON exports, publish A/B/C with the n8n CLI or editor, and restart n8n; imports deactivate previously published webhooks. Workflow A's 24-hour schedule is active in the verified local instance. Every private HTTP step now has a preceding HMAC signer node; the helper rejects unsigned/replayed calls. `make notification-e2e` checks not only application state but also n8n's own terminal B/C execution records and final nodes. For a real browser test, run `NEXT_PUBLIC_ENABLE_DEMO_UPLOAD=1 QA_SCREENSHOT_DIR=../../artifacts/m9-1 npx playwright test tests/qa-real-local.spec.ts` from `apps/web` with the API, local worker, dispatcher and web server running.
+
+The n8n Code signer reads its key from the container environment and requires `crypto` module access. This is suitable only for the single-owner loopback development instance; do not put a shared n8n editor on this configuration without isolating the task runner or moving the key into a credential-backed signer. n8n successful execution data is pruned after 72 hours or 1,000 records. Neither a mock notification nor a LocalStack object is evidence of AWS SES delivery or RDS operation. See [M9.1 remediation](docs/m9-1-remediation.md) for the verified execution IDs, remaining risk and key-rotation procedure.
 

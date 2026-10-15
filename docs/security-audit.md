@@ -29,3 +29,9 @@ Scope: repository code, three n8n exports, Compose, Serverless template, runtime
 6. **P2 RDS transport:** `sslmode=require` encrypts but does not verify the RDS certificate/hostname. `verify-full` plus CA bundle is required before public AWS operation.
 
 No vulnerability scan guarantees the absence of vulnerabilities. The zero-budget policy makes all live AWS/SES controls **BLOCKED_BY_ZERO_BUDGET**.
+
+## M9.1 security update
+
+The unauthenticated helper finding above was reproduced and repaired for the **local single-owner** topology. Every non-health discovery/matching/notification step now verifies body-bound HMAC-SHA256, key ID, timestamp, route and UUID nonce, then atomically reserves the nonce in PostgreSQL. An unsigned Compose-peer request returned 401; bad signature, expired timestamp, wrong route, replay and previous-key rotation are tested. Secrets remain in ignored `.env`, not workflow JSON. The active key and previous key must be distinct; to rotate, add the old ID/secret as `INTERNAL_STEP_PREVIOUS_*` on the helper, set a new `INTERNAL_STEP_KEY_ID`/`INTERNAL_STEP_SECRET` on both n8n and helper, recreate the containers, confirm signed E2E, then remove the previous key after all old requests expire. Never print either key.
+
+**Remaining production blocker:** n8n's local Code signer requires `N8N_BLOCK_ENV_ACCESS_IN_NODE=false` and permits `crypto`; a different workflow editor on a shared n8n instance could read process environment values. Keep the editor loopback/single-owner. Before shared/cloud hosting, isolate the task runner with only the signing key or use a credential-backed signing node, then rerun the security suite. Signed helper calls improve the Compose-peer boundary but do not make this exact local n8n configuration safe for multi-tenant use. Success execution data is retained only for 72 hours/1,000 records; it may contain test payloads.
