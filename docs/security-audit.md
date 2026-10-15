@@ -25,7 +25,7 @@ Scope: repository code, three n8n exports, Compose, Serverless template, runtime
 2. **P1 cloud identity gap:** the M7 browser cannot acquire OIDC tokens for the AWS JWT API. Do not remove authorization to make the UI work. No live JWKS, ownership, throttling or RDS TLS verification was performed.
 3. **P2 n8n/PostgreSQL compatibility:** installed n8n 2.43.5 warns that PostgreSQL 16 receives compatibility support only; the assignment/M1 pin is PostgreSQL 16. Current local workflows run, but an upgrade plan and compatibility test are needed before a long-lived service.
 4. **P1 execution-state mismatch:** n8n's webhook execution rows for B/C remain `running` after app-side completion. This is a reliability and audit-trail concern; verify terminal execution state before any production use. Do not infer success from the helper database alone.
-4. **P2 dependency advisory:** [braces GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) has no published patched version at audit time; the affected path is development lint tooling, not the deployed frontend production dependency tree. Track upstream rather than suppress the finding.
-5. **P2 RDS transport:** `sslmode=require` encrypts but does not verify the RDS certificate/hostname. `verify-full` plus CA bundle is required before public AWS operation.
+5. **P2 dependency advisory:** [braces GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) has no published patched version at audit time; the affected path is development lint tooling, not the deployed frontend production dependency tree. Track upstream rather than suppress the finding.
+6. **P2 RDS transport:** `sslmode=require` encrypts but does not verify the RDS certificate/hostname. `verify-full` plus CA bundle is required before public AWS operation.
 
 No vulnerability scan guarantees the absence of vulnerabilities. The zero-budget policy makes all live AWS/SES controls **BLOCKED_BY_ZERO_BUDGET**.
