@@ -26,6 +26,7 @@ def database_url(*, role: str = "runtime", database: str | None = None) -> URL:
     port = int(os.environ.get("POSTGRES_PORT", "5432"))
     if not 1 <= port <= 65535:
         raise ValueError("invalid POSTGRES_PORT")
+    query = {"sslmode": "require"} if os.getenv("DEPLOYMENT_MODE") == "aws" else {}
     return URL.create(
         "postgresql+psycopg",
         username=username,
@@ -33,6 +34,7 @@ def database_url(*, role: str = "runtime", database: str | None = None) -> URL:
         host=host,
         port=port,
         database=name,
+        query=query,
     )
 
 

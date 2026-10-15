@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -123,6 +124,42 @@ def test_local_s3_bridge_uses_existing_ingestion_handler(pipeline, monkeypatch):
     status, _, accepted, _, _, users, events = inspect_batch(engine, batch_id)
     assert status == "processed" and accepted == 1 and len(users) == len(events) == 1
     assert local_ingestion_bridge.scan_once() == 0
+
+
+def test_api_gateway_jwt_subject_owns_batch(pipeline, monkeypatch):
+    """The AWS adapter reads verified gateway context, not a spoofable HTTP header."""
+    _, engine = pipeline
+    from apps.api.aws_handler import handler
+
+    monkeypatch.setenv("DEPLOYMENT_MODE", "aws")
+
+    def event(method: str, path: str, subject: str | None, body: dict | None = None) -> dict:
+        context: dict = {"http": {"method": method, "path": path, "sourceIp": "127.0.0.1",
+                                 "userAgent": "contract-test"}}
+        if subject is not None:
+            context["authorizer"] = {"jwt": {"claims": {"sub": subject}}}
+        return {"version": "2.0", "routeKey": f"{method} {path}", "rawPath": path,
+                "rawQueryString": "", "headers": {"host": "example.test", "content-type": "application/json",
+                "idempotency-key": "same-key-for-two-users", "x-subject": "spoofed"},
+                "requestContext": context, "isBase64Encoded": False,
+                "body": json.dumps(body) if body is not None else ""}
+
+    metadata = {"filename": "users.csv", "size_bytes": 100, "content_type": "text/csv"}
+    first = handler(event("POST", "/uploads", "subject-a", metadata), {})
+    assert first["statusCode"] == 201
+    batch_id = json.loads(first["body"])["batch_id"]
+    with session_scope(engine) as session:
+        assert session.get(UploadBatch, uuid.UUID(batch_id)).owner_subject == "subject-a"
+    own = handler(event("GET", f"/uploads/{batch_id}", "subject-a"), {})
+    other = handler(event("GET", f"/uploads/{batch_id}", "subject-b"), {})
+    errors = handler(event("GET", f"/uploads/{batch_id}/errors", "subject-b"), {})
+    missing = handler(event("GET", f"/uploads/{batch_id}", None), {})
+    assert own["statusCode"] == 200
+    assert other["statusCode"] == errors["statusCode"] == 404
+    assert missing["statusCode"] == 401
+    second = handler(event("POST", "/uploads", "subject-b", metadata), {})
+    assert second["statusCode"] == 201
+    assert json.loads(second["body"])["batch_id"] != batch_id
 
 
 @pytest.mark.parametrize(("content", "expected", "accepted", "rejected", "code"), [

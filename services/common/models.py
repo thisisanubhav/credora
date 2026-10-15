@@ -46,12 +46,14 @@ class UploadBatch(Base):
         ),
         CheckConstraint("char_length(object_bucket) BETWEEN 1 AND 255", name="ck_upload_batches_bucket"),
         CheckConstraint("char_length(object_key) BETWEEN 1 AND 1024", name="ck_upload_batches_key"),
+        CheckConstraint("owner_subject IS NULL OR char_length(owner_subject) BETWEEN 1 AND 255", name="ck_upload_batches_owner_subject"),
         CheckConstraint("idempotency_key_hash IS NULL OR idempotency_key_hash ~ '^[0-9a-f]{64}$'", name="ck_upload_batches_idempotency_hash"),
         CheckConstraint("request_fingerprint IS NULL OR request_fingerprint ~ '^[0-9a-f]{64}$'", name="ck_upload_batches_fingerprint"),
         Index("ix_upload_batches_status_updated", "status", "updated_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_subject: Mapped[str | None] = mapped_column(String(255))
     object_bucket: Mapped[str] = mapped_column(Text, nullable=False)
     object_key: Mapped[str] = mapped_column(Text, nullable=False)
     object_version_id: Mapped[str | None] = mapped_column(Text)

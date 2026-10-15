@@ -1,4 +1,4 @@
-"""Minimal loopback upload API; deployment authentication belongs to a later milestone."""
+"""Minimal upload API: local loopback mode or verified AWS JWT ownership."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import os
 import re
 import uuid
 
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -23,7 +23,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")],
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Idempotency-Key"],
+    allow_headers=["Content-Type", "Idempotency-Key", "Authorization"],
     allow_credentials=False,
 )
 
@@ -39,6 +39,25 @@ def _settings() -> Settings:
     return Settings.from_env()
 
 
+def _owner(request: Request) -> str | None:
+    """Trust only API Gateway's verified JWT context, never a caller-supplied subject header."""
+    mode = os.getenv("DEPLOYMENT_MODE", "local")
+    if mode == "local":
+        return None
+    if mode != "aws":
+        raise HTTPException(503, "deployment mode is invalid")
+    event = request.scope.get("aws.event")
+    if not isinstance(event, dict):
+        raise HTTPException(401, "authenticated subject is required")
+    try:
+        subject = event["requestContext"]["authorizer"]["jwt"]["claims"]["sub"]
+    except (KeyError, TypeError):
+        raise HTTPException(401, "authenticated subject is required") from None
+    if not isinstance(subject, str) or not 1 <= len(subject) <= 255:
+        raise HTTPException(401, "authenticated subject is invalid")
+    return subject
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -46,9 +65,11 @@ def health() -> dict[str, str]:
 
 @app.post("/uploads", status_code=status.HTTP_201_CREATED)
 def create_upload(
-    request: UploadRequest, idempotency_key: str = Header(min_length=8, max_length=128),
+    request: UploadRequest, http_request: Request,
+    idempotency_key: str = Header(min_length=8, max_length=128),
 ) -> dict[str, object]:
     settings = _settings()
+    owner = _owner(http_request)
     if request.size_bytes > settings.max_bytes:
         raise HTTPException(413, "CSV exceeds configured upload limit")
     if not re.fullmatch(r"[^/\\\x00-\x1f]+\.csv", request.filename, re.IGNORECASE):
@@ -57,7 +78,8 @@ def create_upload(
         raise HTTPException(415, "content_type must be text/csv or application/csv")
     if request.demo_mode and os.getenv("ALLOW_SYNTHETIC_DEMO") != "1":
         raise HTTPException(403, "synthetic demo uploads are disabled")
-    key_hash = hashlib.sha256(idempotency_key.encode()).hexdigest()
+    key_material = idempotency_key if owner is None else f"{owner}\0{idempotency_key}"
+    key_hash = hashlib.sha256(key_material.encode()).hexdigest()
     fingerprint = hashlib.sha256(json.dumps(request.model_dump(), sort_keys=True).encode()).hexdigest()
     engine = make_engine()
     try:
@@ -68,7 +90,7 @@ def create_upload(
                 batch = UploadBatch(
                     id=batch_id, object_bucket=settings.bucket,
                     object_key=f"uploads/{batch_id}/{uuid.uuid4().hex}.csv",
-                    schema_version=1, idempotency_key_hash=key_hash,
+                    schema_version=1, owner_subject=owner, idempotency_key_hash=key_hash,
                     request_fingerprint=fingerprint, is_demo=request.demo_mode,
                 )
                 session.add(batch)
@@ -92,12 +114,13 @@ def create_upload(
 
 
 @app.get("/uploads/{batch_id}")
-def get_upload(batch_id: uuid.UUID) -> dict[str, object]:
+def get_upload(batch_id: uuid.UUID, request: Request) -> dict[str, object]:
+    owner = _owner(request)
     engine = make_engine()
     try:
         with session_scope(engine) as session:
             batch = session.get(UploadBatch, batch_id)
-            if batch is None:
+            if batch is None or (owner is not None and batch.owner_subject != owner):
                 raise HTTPException(404, "Upload batch not found")
             return {
                 "batch_id": str(batch.id), "status": batch.status,
@@ -109,13 +132,15 @@ def get_upload(batch_id: uuid.UUID) -> dict[str, object]:
 
 
 @app.get("/uploads/{batch_id}/errors")
-def get_upload_errors(batch_id: uuid.UUID, offset: int = 0, limit: int = 100) -> dict[str, object]:
+def get_upload_errors(batch_id: uuid.UUID, request: Request, offset: int = 0, limit: int = 100) -> dict[str, object]:
+    owner = _owner(request)
     if offset < 0 or not 1 <= limit <= 500:
         raise HTTPException(422, "offset must be nonnegative and limit must be 1–500")
     engine = make_engine()
     try:
         with session_scope(engine) as session:
-            if session.get(UploadBatch, batch_id) is None:
+            batch = session.get(UploadBatch, batch_id)
+            if batch is None or (owner is not None and batch.owner_subject != owner):
                 raise HTTPException(404, "Upload batch not found")
             rows = session.scalars(select(UploadRowError).where(
                 UploadRowError.upload_batch_id == batch_id,

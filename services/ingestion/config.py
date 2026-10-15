@@ -37,7 +37,7 @@ class Settings:
             url_ttl_seconds=positive("UPLOAD_URL_TTL_SECONDS", 600, 3600),
             lease_seconds=positive("INGESTION_LEASE_SECONDS", 900, 3600),
             endpoint_url=os.getenv("S3_ENDPOINT_URL") or None,
-            region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+            region=os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "us-east-1",
         )
 
 

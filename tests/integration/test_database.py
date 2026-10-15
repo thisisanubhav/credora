@@ -152,7 +152,10 @@ def test_migration_constraints_and_indexes(engine):
     assert "uq_loan_products_current" in {i["name"] for i in inspector.get_indexes("loan_products")}
     assert "ix_outbox_events_due" in {i["name"] for i in inspector.get_indexes("outbox_events")}
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "4e6f9a12c302"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "74d95e91acb2"
+    assert "ck_upload_batches_owner_subject" in {
+        c["name"] for c in inspector.get_check_constraints("upload_batches")
+    }
 
 
 def test_users_precision_and_cross_batch_identity(engine):
