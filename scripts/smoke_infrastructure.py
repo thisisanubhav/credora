@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Read-only checks for the M1 Compose stack (Python standard library only)."""
 
 import json
@@ -11,7 +10,6 @@ from pathlib import Path
 
 from local_env import LOCAL, parse_env, validate
 
-
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE = [
     "docker", "compose", "--project-directory", ".", "--env-file", ".env",
@@ -20,7 +18,7 @@ COMPOSE = [
 
 
 def run(args, check=True):
-    result = subprocess.run(args, cwd=ROOT, text=True, capture_output=True)
+    result = subprocess.run(args, check=False, cwd=ROOT, text=True, capture_output=True)
     if check and result.returncode:
         # Compose config and container details may contain credentials. Do not echo them.
         raise RuntimeError(f"command failed (exit {result.returncode}): {args[0]}")
@@ -42,16 +40,16 @@ def inspect(container_id, format_string):
 
 def check_static(config):
     services = config.get("services", {})
-    require(set(services) == {"postgres", "n8n"}, "expected exactly postgres and n8n")
-    require(set(config.get("volumes", {})) == {"postgres_data", "n8n_data"}, "named volumes missing")
-    for name in ("postgres", "n8n"):
+    require(set(services) == {"postgres", "n8n", "localstack"}, "expected postgres, n8n, localstack")
+    require(set(config.get("volumes", {})) == {"postgres_data", "n8n_data", "localstack_data"}, "named volumes missing")
+    for name in ("postgres", "n8n", "localstack"):
         service = services[name]
         require(service.get("healthcheck"), f"{name} has no healthcheck")
         require(service.get("restart") == "unless-stopped", f"{name} has no restart policy")
         require(service.get("networks"), f"{name} has no Compose network")
         ports = service.get("ports", [])
         require(len(ports) == 1 and ports[0].get("host_ip") == "127.0.0.1", f"{name} is not loopback-only")
-        expected_volume = "postgres_data" if name == "postgres" else "n8n_data"
+        expected_volume = {"postgres": "postgres_data", "n8n": "n8n_data", "localstack": "localstack_data"}[name]
         require(any(volume.get("type") == "volume" and volume.get("source") == expected_volume
                     for volume in service.get("volumes", [])), f"{name} has no persistent named volume")
     require(services["n8n"].get("depends_on", {}).get("postgres", {}).get("condition") == "service_healthy",
@@ -64,18 +62,18 @@ def check_static(config):
 
 def check_runtime(values):
     ids = {}
-    for name in ("postgres", "n8n"):
+    for name in ("postgres", "n8n", "localstack"):
         ids[name] = compose("ps", "-q", name).stdout.strip()
         require(ids[name], f"{name} container is not running")
         state = inspect(ids[name], "{{json .State}}")
         require(state.get("Running") and state.get("Health", {}).get("Status") == "healthy",
                 f"{name} container is not healthy")
         mounts = inspect(ids[name], "{{json .Mounts}}")
-        expected = "postgres_data" if name == "postgres" else "n8n_data"
+        expected = {"postgres": "postgres_data", "n8n": "n8n_data", "localstack": "localstack_data"}[name]
         require(any(mount.get("Type") == "volume" and mount.get("Name", "").endswith("_" + expected)
                     for mount in mounts), f"{name} named volume is not mounted")
         ports = inspect(ids[name], "{{json .NetworkSettings.Ports}}")
-        expected_port = "5432/tcp" if name == "postgres" else "5678/tcp"
+        expected_port = {"postgres": "5432/tcp", "n8n": "5678/tcp", "localstack": "4566/tcp"}[name]
         bindings = ports.get(expected_port) or []
         require(len(bindings) == 1 and bindings[0].get("HostIp") == "127.0.0.1",
                 f"{name} runtime port is not bound only to loopback")
@@ -113,10 +111,10 @@ def check_runtime(values):
     app_tables = set(compose("exec", "-T", "postgres", "sh", "-c", app_command, "sh", query).stdout.splitlines())
     n8n_tables = set(compose("exec", "-T", "postgres", "sh", "-c", n8n_command, "sh", query).stdout.splitlines())
     m2_tables = {"alembic_version", "upload_batches", "users", "product_sources", "loan_products",
-                 "matches", "workflow_executions", "outbox_events", "notification_logs", "notification_matches"}
+                 "matches", "workflow_executions", "outbox_events", "notification_logs", "notification_matches", "upload_row_errors"}
     require(not app_tables or app_tables == m2_tables, "unexpected application database tables")
     require(n8n_tables and not (n8n_tables & m2_tables), "n8n persistence is not isolated")
-    print("PASS: application schema is empty or at M2; n8n tables are isolated")
+    print("PASS: application schema is empty or at M3; n8n tables are isolated")
 
     url = f"http://127.0.0.1:{values['N8N_PORT']}/healthz"
     for attempt in range(10):

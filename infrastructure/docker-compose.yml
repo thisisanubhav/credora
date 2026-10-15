@@ -68,9 +68,32 @@ services:
     networks:
       - local
 
+  localstack:
+    image: localstack/localstack:4.11.0
+    restart: unless-stopped
+    environment:
+      SERVICES: s3
+      PERSISTENCE: "1"
+      S3_SKIP_SIGNATURE_VALIDATION: "0"
+    ports:
+      - target: 4566
+        published: ${LOCALSTACK_PORT:?Set LOCALSTACK_PORT in .env}
+        host_ip: 127.0.0.1
+    volumes:
+      - localstack_data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:4566/_localstack/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - local
+
 volumes:
   postgres_data:
   n8n_data:
+  localstack_data:
 
 networks:
   local:

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Create and validate the ignored local Compose environment (stdlib only)."""
 
 import os
@@ -6,7 +5,6 @@ import re
 import secrets
 import sys
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / ".env.example"
@@ -30,6 +28,9 @@ REQUIRED = (
     "N8N_ENCRYPTION_KEY",
     "N8N_WEBHOOK_URL",
     "GENERIC_TIMEZONE",
+    "LOCALSTACK_PORT", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION",
+    "S3_ENDPOINT_URL", "S3_BUCKET", "CSV_MAX_BYTES", "CSV_CHUNK_SIZE",
+    "UPLOAD_URL_TTL_SECONDS", "INGESTION_LEASE_SECONDS",
 )
 
 
@@ -71,16 +72,21 @@ def validate(values):
         raise ValueError("bootstrap, n8n and runtime database users must differ")
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", values["COMPOSE_PROJECT_NAME"]):
         raise ValueError("COMPOSE_PROJECT_NAME contains invalid characters")
-    for key in ("POSTGRES_PORT", "N8N_PORT"):
+    for key in ("POSTGRES_PORT", "N8N_PORT", "LOCALSTACK_PORT"):
         if not values[key].isdigit() or not 1 <= int(values[key]) <= 65535:
             raise ValueError(f"{key} must be a valid TCP port")
-    if values["POSTGRES_PORT"] == values["N8N_PORT"]:
-        raise ValueError("PostgreSQL and n8n host ports must differ")
+    if len({values[key] for key in ("POSTGRES_PORT", "N8N_PORT", "LOCALSTACK_PORT")}) != 3:
+        raise ValueError("local service ports must differ")
     if values["N8N_HOST"] != "localhost" or values["N8N_PROTOCOL"] != "http":
         raise ValueError("M1 permits only localhost HTTP n8n access")
     expected_url = f"http://localhost:{values['N8N_PORT']}/"
     if values["N8N_WEBHOOK_URL"] != expected_url:
         raise ValueError(f"N8N_WEBHOOK_URL must be {expected_url}")
+    if values["S3_ENDPOINT_URL"] != f"http://127.0.0.1:{values['LOCALSTACK_PORT']}":
+        raise ValueError("S3_ENDPOINT_URL must point to loopback LocalStack")
+    for key in ("CSV_MAX_BYTES", "CSV_CHUNK_SIZE", "UPLOAD_URL_TTL_SECONDS", "INGESTION_LEASE_SECONDS"):
+        if not values[key].isdigit() or int(values[key]) < 1:
+            raise ValueError(f"{key} must be positive")
 
 
 def init():
@@ -136,11 +142,31 @@ def extend():
     print("Added missing M2 settings to ignored .env (secret values hidden).")
 
 
+def extend_m3():
+    """Append only emulator/ingestion settings to an existing ignored M2 environment."""
+    if not LOCAL.is_file():
+        raise ValueError(".env is missing; run `make init`")
+    values = parse_env(LOCAL)
+    template = parse_env(EXAMPLE)
+    keys = ("LOCALSTACK_PORT", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION",
+            "S3_ENDPOINT_URL", "S3_BUCKET", "CSV_MAX_BYTES", "CSV_CHUNK_SIZE",
+            "UPLOAD_URL_TTL_SECONDS", "INGESTION_LEASE_SECONDS")
+    additions = {key: template[key] for key in keys if key not in values}
+    validate(values | additions)
+    if additions:
+        with LOCAL.open("a", encoding="utf-8") as output:
+            output.write("\n# M3 local S3 emulator and ingestion settings\n")
+            for key, value in additions.items():
+                output.write(f"{key}={value}\n")
+        os.chmod(LOCAL, 0o600)
+    print("Local M3 environment ready (secret values hidden).")
+
+
 if __name__ == "__main__":
     try:
-        if len(sys.argv) != 2 or sys.argv[1] not in ("init", "check", "extend"):
-            raise ValueError("usage: python3 scripts/local_env.py {init|check|extend}")
-        {"init": init, "check": check, "extend": extend}[sys.argv[1]]()
+        if len(sys.argv) != 2 or sys.argv[1] not in ("init", "check", "extend", "extend-m3"):
+            raise ValueError("usage: python3 scripts/local_env.py {init|check|extend|extend-m3}")
+        {"init": init, "check": check, "extend": extend, "extend-m3": extend_m3}[sys.argv[1]]()
     except (OSError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         sys.exit(1)

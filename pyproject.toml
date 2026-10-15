@@ -4,13 +4,22 @@ version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "alembic>=1.17,<2",
+  "boto3>=1.40,<2",
+  "email-validator>=2.3,<3",
+  "fastapi>=0.120,<1",
   "psycopg[binary]>=3.2,<4",
   "pydantic>=2.12,<3",
   "SQLAlchemy>=2.0,<2.1",
+  "uvicorn>=0.38,<1",
 ]
 
 [dependency-groups]
-dev = ["mypy>=1.18,<2", "pytest>=8,<10", "ruff>=0.14,<1"]
+dev = [
+    "httpx>=0.28,<1",
+    "mypy>=1.18,<2",
+    "pytest>=8,<10",
+    "ruff>=0.14,<1",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -22,5 +31,9 @@ line-length = 100
 
 [tool.mypy]
 python_version = "3.12"
-files = ["services/common", "tests/integration"]
+files = ["apps/api", "services/common", "services/ingestion", "tests/integration", "tests/ingestion"]
 ignore_missing_imports = false
+
+[[tool.mypy.overrides]]
+module = ["boto3", "botocore.*"]
+ignore_missing_imports = true
