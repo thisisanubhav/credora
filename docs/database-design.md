@@ -9,7 +9,7 @@
 - Prevent duplicate users within a batch, duplicate matches, and duplicate notification attempts.
 - Avoid premature partitioning, generic entity-attribute-value models, and database triggers containing business workflows.
 
-No migrations are created in this phase. Types and constraints below are the migration contract for M2 and may change only through a documented review.
+The original planning contract follows below; the M2 implementation review at the end records the migrations and every meaningful deviation.
 
 ## Entity relationship model
 
