@@ -40,10 +40,10 @@ db-connect: check-env
 
 db-test: check-env
 	uv run --frozen --env-file .env python -m scripts.db_admin test-database
-	uv run --frozen --env-file .env pytest tests/integration
+	uv run --frozen --env-file .env pytest tests/integration tests/unit
 
 lint:
-	uv run --frozen ruff check services scripts/db_admin.py tests/integration database/migrations
+	uv run --frozen ruff check services scripts/db_admin.py tests database/migrations
 
 typecheck:
 	uv run --frozen mypy
