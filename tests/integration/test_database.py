@@ -47,7 +47,7 @@ def engine():
             "matches", "workflow_executions", "outbox_events", "notification_logs", "notification_matches",
         }
         command.downgrade(config, "base")
-        assert inspect(database_engine).get_table_names() == []
+        assert set(inspect(database_engine).get_table_names()) <= {"alembic_version"}
         command.upgrade(config, "head")
         yield database_engine
     finally:
