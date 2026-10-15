@@ -300,11 +300,10 @@ def test_notification_reservation_and_match_membership(engine):
 
 def test_transaction_rollback_and_session_close(engine):
     upload_id = uuid.uuid4()
-    with pytest.raises(RuntimeError):
-        with session_scope(engine) as session:
-            session.add(UploadBatch(id=upload_id, object_bucket="test", object_key="rollback.csv", schema_version=1))
-            session.flush()
-            raise RuntimeError("abort")
+    with pytest.raises(RuntimeError), session_scope(engine) as session:
+        session.add(UploadBatch(id=upload_id, object_bucket="test", object_key="rollback.csv", schema_version=1))
+        session.flush()
+        raise RuntimeError("abort")
     with session_scope(engine) as session:
         assert session.get(UploadBatch, upload_id) is None
         captured = session
