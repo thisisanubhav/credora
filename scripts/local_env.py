@@ -34,6 +34,7 @@ REQUIRED = (
     "MATCHING_WEBHOOK_SECRET", "MATCHING_WEBHOOK_URL", "ALLOW_SYNTHETIC_DEMO",
     "NOTIFICATION_MODE", "NOTIFICATION_TRANSPORT", "NOTIFICATION_SES_ENABLED",
     "NOTIFICATION_TEST_EMAIL", "NOTIFICATION_FROM_EMAIL", "NOTIFICATION_WEBHOOK_URL",
+    "FRONTEND_ORIGIN",
 )
 
 
@@ -95,6 +96,8 @@ def validate(values):
         raise ValueError("NOTIFICATION_SES_ENABLED must be 0 or 1")
     if values["NOTIFICATION_WEBHOOK_URL"] != f"http://127.0.0.1:{values['N8N_PORT']}/webhook/loan-notifications":
         raise ValueError("NOTIFICATION_WEBHOOK_URL must point to local n8n")
+    if not re.fullmatch(r"http://(?:localhost|127\.0\.0\.1):[1-9][0-9]{0,4}", values["FRONTEND_ORIGIN"]):
+        raise ValueError("FRONTEND_ORIGIN must be a loopback HTTP origin")
     for key in ("NOTIFICATION_TEST_EMAIL", "NOTIFICATION_FROM_EMAIL"):
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", values[key]):
             raise ValueError(f"{key} must be an email address")
@@ -220,12 +223,29 @@ def extend_m6():
     print("Local M6 notification environment ready (no real recipient sends enabled).")
 
 
+def extend_m7():
+    """Append the local-only browser origin to an existing environment."""
+    if not LOCAL.is_file():
+        raise ValueError(".env is missing; run `make init`")
+    values = parse_env(LOCAL)
+    template = parse_env(EXAMPLE)
+    additions = {"FRONTEND_ORIGIN": template["FRONTEND_ORIGIN"]} if "FRONTEND_ORIGIN" not in values else {}
+    validate(values | additions)
+    if additions:
+        with LOCAL.open("a", encoding="utf-8") as output:
+            output.write("\n# M7 browser origin (local only)\n")
+            for key, value in additions.items():
+                output.write(f"{key}={value}\n")
+        os.chmod(LOCAL, 0o600)
+    print("Local M7 browser origin ready.")
+
+
 if __name__ == "__main__":
     try:
-        if len(sys.argv) != 2 or sys.argv[1] not in ("init", "check", "extend", "extend-m3", "extend-m5", "extend-m6"):
-            raise ValueError("usage: python3 scripts/local_env.py {init|check|extend|extend-m3|extend-m5|extend-m6}")
+        if len(sys.argv) != 2 or sys.argv[1] not in ("init", "check", "extend", "extend-m3", "extend-m5", "extend-m6", "extend-m7"):
+            raise ValueError("usage: python3 scripts/local_env.py {init|check|extend|extend-m3|extend-m5|extend-m6|extend-m7}")
         {"init": init, "check": check, "extend": extend, "extend-m3": extend_m3,
-         "extend-m5": extend_m5, "extend-m6": extend_m6}[sys.argv[1]]()
+         "extend-m5": extend_m5, "extend-m6": extend_m6, "extend-m7": extend_m7}[sys.argv[1]]()
     except (OSError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         sys.exit(1)

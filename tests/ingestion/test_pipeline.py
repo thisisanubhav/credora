@@ -14,6 +14,7 @@ from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from scripts import local_ingestion_bridge
 from scripts.local_s3 import ensure_bucket
 from services.common.db import make_engine, session_scope
 from services.common.models import OutboxEvent, UploadBatch, UploadRowError, User
@@ -94,6 +95,34 @@ def test_valid_presigned_and_replay(pipeline):
     assert users[0].employment_status_raw == "Salaried"
     assert len(events) == 1 and events[0].payload == {"batch_id": str(batch_id)}
     assert client.get(f"/uploads/{batch_id}").json()["accepted_rows"] == 1
+
+
+def test_browser_cors_is_single_origin(pipeline):
+    client, _ = pipeline
+    origin = os.environ["FRONTEND_ORIGIN"]
+    allowed = client.options("/uploads", headers={
+        "Origin": origin, "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type,idempotency-key",
+    })
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == origin
+    denied = client.options("/uploads", headers={
+        "Origin": "https://untrusted.example", "Access-Control-Request-Method": "POST",
+    })
+    assert denied.status_code == 400
+    assert "access-control-allow-origin" not in denied.headers
+    cors = s3_client(Settings.from_env()).get_bucket_cors(Bucket=Settings.from_env().bucket)
+    assert cors["CORSRules"][0]["AllowedOrigins"] == [origin]
+
+
+def test_local_s3_bridge_uses_existing_ingestion_handler(pipeline, monkeypatch):
+    _, engine = pipeline
+    batch_id, _ = upload(pipeline, (HEADER + VALID).encode())
+    monkeypatch.setattr(local_ingestion_bridge, "make_engine", lambda: engine)
+    assert local_ingestion_bridge.scan_once() >= 1
+    status, _, accepted, _, _, users, events = inspect_batch(engine, batch_id)
+    assert status == "processed" and accepted == 1 and len(users) == len(events) == 1
+    assert local_ingestion_bridge.scan_once() == 0
 
 
 @pytest.mark.parametrize(("content", "expected", "accepted", "rejected", "code"), [

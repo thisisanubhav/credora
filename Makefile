@@ -1,6 +1,6 @@
 COMPOSE = docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml
 
-.PHONY: init check-env config up down logs status smoke db-upgrade db-status db-role db-connect db-test lint typecheck s3-init api ingestion-test ingestion-e2e discovery-test discovery-import discovery-run matching-import matching-dispatch matching-test matching-e2e matching-benchmark notification-import notification-test notification-e2e
+.PHONY: init check-env config up down logs status smoke db-upgrade db-status db-role db-connect db-test lint typecheck s3-init api ingestion-test ingestion-e2e discovery-test discovery-import discovery-run matching-import matching-dispatch matching-test matching-e2e matching-benchmark notification-import notification-test notification-e2e web-install web-dev web-lint web-typecheck web-build web-test web-e2e local-worker
 
 init:
 	python3 scripts/local_env.py init
@@ -93,6 +93,30 @@ notification-test: check-env
 
 notification-e2e: check-env
 	uv run --frozen --env-file .env python -m scripts.notification_e2e
+
+local-worker: check-env
+	uv run --frozen --env-file .env python -m scripts.local_ingestion_bridge --watch
+
+web-install:
+	npm ci --prefix apps/web --no-audit --no-fund
+
+web-dev:
+	npm run dev --prefix apps/web
+
+web-lint:
+	npm run lint --prefix apps/web
+
+web-typecheck:
+	npm run typecheck --prefix apps/web
+
+web-build:
+	npm run build --prefix apps/web
+
+web-test:
+	npm run test:unit --prefix apps/web
+
+web-e2e:
+	npm run test:e2e --prefix apps/web
 
 lint:
 	uv run --frozen ruff check apps services scripts tests benchmarks database/migrations

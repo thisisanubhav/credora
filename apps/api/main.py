@@ -9,6 +9,7 @@ import re
 import uuid
 
 from fastapi import FastAPI, Header, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -18,6 +19,13 @@ from services.common.models import UploadBatch, UploadRowError
 from services.ingestion.config import Settings, s3_client
 
 app = FastAPI(title="Loan Eligibility Upload API", docs_url=None, redoc_url=None)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Idempotency-Key"],
+    allow_credentials=False,
+)
 
 
 class UploadRequest(BaseModel):
