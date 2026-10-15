@@ -1,8 +1,76 @@
 # Loan Eligibility Engine
 
-An event-driven platform that ingests CSV batches, discovers personal-loan products, evaluates eligibility, and sends test notifications through workflows orchestrated by self-hosted n8n.
+An event-driven, local-first demonstration that ingests CSV batches, discovers personal-loan products, evaluates *potential* eligibility, and prepares test notifications through self-hosted n8n. It does not approve loans.
 
-> **Current phase:** M9.1 local compliance recovery. The browser-to-n8n path now has terminal B/C execution evidence with clearly labelled synthetic fixtures and mock-only notifications. AWS resources have not been provisioned; no real email has been sent.
+> **Submission boundary:** ₹0 budget. LocalStack is not AWS S3, local PostgreSQL is not RDS, and a mock notification is not a received SES email. No AWS resources were provisioned and no real email or Gemini request was sent. Bank products remain review-required; positive demonstration matches use unmistakably synthetic products only.
+
+## Quick start — local, no cloud account
+
+Use Docker with Compose, Python 3.12+, [uv](https://docs.astral.sh/uv/), Node 24 LTS, npm, and `make`. From a clean clone:
+
+```sh
+make init
+uv sync --frozen
+npm ci --prefix apps/web --no-audit --no-fund
+make up
+make db-upgrade db-role s3-init smoke
+make discovery-import matching-import notification-import
+# Publish all three imported workflows in the loopback n8n editor at http://localhost:5678.
+# Importing an existing workflow deactivates it; publish again before webhook tests.
+```
+
+Open three more terminals for `make api`, `make local-worker`, and `make web-dev`; use <http://127.0.0.1:3107>. For the complete local matching/notification path, start `uv run --frozen --env-file .env python -m services.eligibility.dispatcher --watch` in another terminal and seed *only* the labelled synthetic fixtures with `uv run --frozen --env-file .env python -m scripts.seed_matching_demo` and `uv run --frozen --env-file .env python -m scripts.seed_notification_demo`. The UI's synthetic demo checkbox additionally requires `NEXT_PUBLIC_ENABLE_DEMO_UPLOAD=1` for `make web-dev`. Without it, uploaded users will not automatically match the incomplete bank criteria. Run `make notification-e2e` for a headless, real-local-boundary smoke test after B/C are published. The mock branch records notifications but sends nothing.
+
+See [fresh-checkout and demonstration steps](docs/submission-checklist.md) and the [final architecture diagrams](docs/final-architecture.md). Never copy an existing `.env` into a new checkout; `make init` generates local-only keys. All editor, API, S3-emulator, and database ports bind to loopback.
+
+## What this demonstrates
+
+| Capability | Local evidence | Limit |
+|---|---|---|
+| Bulk upload | Browser → presigned LocalStack POST → Python ingestion → PostgreSQL | AWS S3/Lambda/RDS not run |
+| Discovery | Scheduled n8n Workflow A crawls official SBI and Axis pages | Both products remain review-required; Gemini not called |
+| Matching | n8n Workflow B uses SQL candidate reduction and deterministic rules | Positive results use isolated synthetic fixtures |
+| Notifications | n8n Workflow C groups potential matches, guards recipients, includes an AWS SES node | Only mock transport exercised; no inbox receipt |
+
+The assignment's 5–10 minute video and received SES email have **not** been produced. See [submission summary](docs/submission-summary.md) for honest compliance status and manual submission steps.
+
+## Architecture and engineering decisions
+
+```mermaid
+flowchart LR
+    UI[Next.js browser] --> API[FastAPI presign]
+    API --> S3[(S3 or LocalStack)]
+    UI --> S3
+    S3 --> ING[Ingestion Lambda or local event bridge]
+    ING --> DB[(PostgreSQL; RDS only in future AWS design)]
+    DB --> OUT[Transactional outbox]
+    OUT --> B[n8n Workflow B: matching]
+    B --> DB
+    B --> OUT
+    OUT --> C[n8n Workflow C: notifications]
+    C --> MOCK[Local mock; no email]
+    C -.-> SES[AWS SES node; not exercised]
+    A[n8n Workflow A: scheduled discovery] --> BANK[Official SBI and Axis pages]
+    A --> DB
+```
+
+Python keeps the ingestion and validated helper operations small and testable; n8n owns the workflow stages and order. PostgreSQL removes hard-failing candidate pairs before deterministic decisions, while unknown currency or unsupported lender criteria fail closed. The outbox preserves a committed batch when n8n is unavailable and retries with signed, idempotent events. Product versions retain official URL and cited evidence. [The full architecture](docs/final-architecture.md) explains sequences, recovery, provenance, and synthetic isolation.
+
+## Tests and measured performance
+
+`uv run --frozen --env-file .env pytest tests -q`, `make smoke`, `make web-test web-e2e web-lint web-typecheck web-build`, `make lint typecheck`, and `make aws-config-offline aws-package-local` are local/offline gates. Browser E2E needs Playwright Chromium (`cd apps/web && npx playwright install chromium`). `make matching-benchmark` and `uv run --frozen --env-file .env python -m benchmarks.ingestion.run` reproduce the controlled measurements in [performance report](docs/performance-report.md): 10,000-row parse/persist 0.615 s; 10,000 × 50 theoretical pairs reduced from 500,000 to 100,499 SQL candidates (79.9% reduction), with 8.058 s SQL-plus-deterministic evaluation and **zero LLM calls**. These are single local observations, not production throughput or full n8n-at-scale results.
+
+## Security and deployment limits
+
+The local API is unauthenticated and loopback-only. The *future* AWS HTTP API template requires a verified JWT subject and batch ownership, but the browser has no OIDC sign-in; do not expose it by disabling authorization. Dispatcher/webhook and internal helper stages use HMAC, timestamps, replay fences, and restricted database roles. The local n8n Code-node signer can access an environment key and is safe only in a single-owner loopback editor. Recipient routing is test-only, with mock transport by default. [Security audit](docs/security-audit.md) and [AWS deployment guide](docs/aws-deployment-guide.md) list cloud prerequisites. `infrastructure/serverless.yml` was validated and packaged offline, **not deployed**. Future RDS, SES, identity, network, and cost approvals are outside this ₹0 submission.
+
+## Reviewer navigation
+
+- [Requirements/evidence matrix](docs/assignment-compliance-final.md) and [final test evidence](docs/final-test-evidence.md)
+- [Three workflow exports](workflows/), [node-by-node discovery](docs/discovery-workflow.md), [matching](docs/matching-workflow.md), and [notification](docs/notification-workflow.md)
+- [CSV contract](docs/csv-contract.md), [database design](docs/database-design.md), [optimization](docs/optimization-strategy.md), and [benchmark](docs/performance-report.md)
+- [Zero-budget AWS design](docs/aws-deployment-design.md), [offline Serverless template](infrastructure/serverless.yml), and [local Compose](infrastructure/docker-compose.yml)
+- [Demo script](docs/final-demo-script.md), [demo checklist](docs/final-demo-checklist.md), and [submission checklist](docs/submission-checklist.md)
 
 ## Planned flow
 
