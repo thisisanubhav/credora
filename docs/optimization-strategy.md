@@ -41,6 +41,7 @@ Workflow A converts source criteria into a versioned rule schema. Common numeric
 
 - `min_monthly_income`
 - `min_credit_score`
+- `max_credit_score` when the source states an upper bound
 - `min_age` / `max_age`
 - `eligible_employment_statuses`
 
@@ -69,6 +70,7 @@ JOIN loan_products AS p
  AND p.retired_at IS NULL
  AND (p.min_monthly_income IS NULL OR u.monthly_income >= p.min_monthly_income)
  AND (p.min_credit_score IS NULL OR u.credit_score >= p.min_credit_score)
+ AND (p.max_credit_score IS NULL OR u.credit_score <= p.max_credit_score)
  AND (p.min_age IS NULL OR u.age >= p.min_age)
  AND (p.max_age IS NULL OR u.age <= p.max_age)
  AND (
