@@ -33,7 +33,7 @@ line-length = 100
 
 [tool.mypy]
 python_version = "3.12"
-files = ["apps/api", "apps/discovery_api", "apps/matching_api", "services/common", "services/ingestion", "services/discovery", "services/eligibility", "scripts/matching_e2e.py", "scripts/seed_matching_demo.py", "benchmarks/eligibility", "tests/integration", "tests/ingestion", "tests/discovery", "tests/matching"]
+files = ["apps/api", "apps/discovery_api", "apps/matching_api", "apps/notification_api", "services/common", "services/ingestion", "services/discovery", "services/eligibility", "services/notifications", "scripts/matching_e2e.py", "scripts/seed_matching_demo.py", "scripts/notification_e2e.py", "scripts/seed_notification_demo.py", "benchmarks/eligibility", "tests/integration", "tests/ingestion", "tests/discovery", "tests/matching", "tests/notifications"]
 ignore_missing_imports = false
 
 [[tool.mypy.overrides]]

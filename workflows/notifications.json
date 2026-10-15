@@ -1,0 +1,41 @@
+{
+  "id": "loanNotificationsM6",
+  "name": "Workflow C - Test-Only User Notifications",
+  "active": false,
+  "nodes": [
+    {"id":"webhook","name":"Signed Notification Webhook","type":"n8n-nodes-base.webhook","typeVersion":2.1,"position":[0,240],"webhookId":"loan-notifications-m6","parameters":{"httpMethod":"POST","path":"loan-notifications","responseMode":"responseNode","options":{}}},
+    {"id":"auth","name":"Authenticate and Durably Accept Event","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[220,240],"parameters":{"method":"POST","url":"http://discovery:8001/notifications/accept","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({body:$json.body,headers:$json.headers}) }}","options":{"timeout":30000}}},
+    {"id":"fresh","name":"New or Resumable Completion?","type":"n8n-nodes-base.if","typeVersion":2.2,"position":[440,240],"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":2},"conditions":[{"id":"fresh-check","leftValue":"={{ $json.accepted === true }}","rightValue":true,"operator":{"type":"boolean","operation":"true"}}],"combinator":"and"}}},
+    {"id":"ack","name":"Acknowledge Durable Notification Run","type":"n8n-nodes-base.respondToWebhook","typeVersion":1.4,"position":[660,120],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({run_id:$json.run_id,batch_id:$json.batch_id,state:$json.state}) }}","options":{"responseCode":202}}},
+    {"id":"duplicate","name":"Acknowledge Duplicate Completion","type":"n8n-nodes-base.respondToWebhook","typeVersion":1.4,"position":[660,360],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({run_id:$json.run_id,batch_id:$json.batch_id,state:$json.state}) }}","options":{"responseCode":202}}},
+    {"id":"next","name":"Fetch and Reserve Next User Group","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[880,120],"parameters":{"method":"POST","url":"http://discovery:8001/notifications/next","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({run_id:$json.run_id}) }}","options":{"timeout":30000}}},
+    {"id":"done","name":"All User Groups Complete?","type":"n8n-nodes-base.if","typeVersion":2.2,"position":[1100,120],"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":2},"conditions":[{"id":"done-check","leftValue":"={{ $json.done === true }}","rightValue":true,"operator":{"type":"boolean","operation":"true"}}],"combinator":"and"}}},
+    {"id":"summary","name":"Notification Execution Summary","type":"n8n-nodes-base.code","typeVersion":2,"position":[1320,-40],"parameters":{"jsCode":"return $input.all().map(item => ({json:{run_id:item.json.run_id,status:'succeeded',metrics:item.json.metrics}}));"}},
+    {"id":"skip","name":"Already Handled or No New Matches?","type":"n8n-nodes-base.if","typeVersion":2.2,"position":[1320,220],"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":2},"conditions":[{"id":"skip-check","leftValue":"={{ $json.skip === true }}","rightValue":true,"operator":{"type":"boolean","operation":"true"}}],"combinator":"and"}}},
+    {"id":"compose","name":"Group Verified Matches and Compose Text + HTML","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[1540,340],"parameters":{"method":"POST","url":"http://discovery:8001/notifications/compose","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({notification_id:$json.notification_id}) }}","options":{"timeout":30000}}},
+    {"id":"preflight","name":"Enforce Test Recipient and Begin Attempt","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[1760,340],"parameters":{"method":"POST","url":"http://discovery:8001/notifications/preflight","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({notification_id:$json.notification_id}) }}","options":{"timeout":30000}}},
+    {"id":"mode","name":"Local Mock or Explicit SES?","type":"n8n-nodes-base.if","typeVersion":2.2,"position":[1980,340],"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":2},"conditions":[{"id":"mock-check","leftValue":"={{ $json.delivery_mode === 'mock' }}","rightValue":true,"operator":{"type":"boolean","operation":"true"}}],"combinator":"and"}}},
+    {"id":"mock","name":"Local Mock Acceptance (No Email)","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[2200,200],"parameters":{"method":"POST","url":"http://discovery:8001/notifications/mock-send","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({notification_id:$json.notification_id,recipient:$json.recipient}) }}","options":{"timeout":30000}}},
+    {"id":"mock-result","name":"Record Mock Result","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[2420,200],"parameters":{"method":"POST","url":"http://discovery:8001/notifications/result","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({notification_id:$json.notification_id,message_id:$json.message_id}) }}","options":{"timeout":30000}}},
+    {"id":"ses","name":"AWS SES Send to Controlled Test Inbox","type":"n8n-nodes-base.awsSes","typeVersion":1,"position":[2200,480],"onError":"continueRegularOutput","parameters":{"resource":"email","operation":"send","fromEmail":"={{ $json.sender }}","toAddresses":"={{ [$json.recipient] }}","subject":"={{ $json.subject }}","body":"={{ $json.html }}","isBodyHtml":true,"additionalFields":{}}},
+    {"id":"ses-result","name":"Record SES Acceptance or Ambiguity","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[2420,480],"parameters":{"method":"POST","url":"http://discovery:8001/notifications/result","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({notification_id:$node['Enforce Test Recipient and Begin Attempt'].json.notification_id,message_id:$json.SendEmailResponse?.SendEmailResult?.MessageId ?? $json.SendEmailResult?.MessageId ?? null,error_code:$json.error ? 'ses_node_error_or_timeout' : null}) }}","options":{"timeout":30000}}}
+  ],
+  "connections": {
+    "Signed Notification Webhook":{"main":[[{"node":"Authenticate and Durably Accept Event","type":"main","index":0}]]},
+    "Authenticate and Durably Accept Event":{"main":[[{"node":"New or Resumable Completion?","type":"main","index":0}]]},
+    "New or Resumable Completion?":{"main":[[{"node":"Acknowledge Durable Notification Run","type":"main","index":0}],[{"node":"Acknowledge Duplicate Completion","type":"main","index":0}]]},
+    "Acknowledge Durable Notification Run":{"main":[[{"node":"Fetch and Reserve Next User Group","type":"main","index":0}]]},
+    "Fetch and Reserve Next User Group":{"main":[[{"node":"All User Groups Complete?","type":"main","index":0}]]},
+    "All User Groups Complete?":{"main":[[{"node":"Notification Execution Summary","type":"main","index":0}],[{"node":"Already Handled or No New Matches?","type":"main","index":0}]]},
+    "Already Handled or No New Matches?":{"main":[[{"node":"Fetch and Reserve Next User Group","type":"main","index":0}],[{"node":"Group Verified Matches and Compose Text + HTML","type":"main","index":0}]]},
+    "Group Verified Matches and Compose Text + HTML":{"main":[[{"node":"Enforce Test Recipient and Begin Attempt","type":"main","index":0}]]},
+    "Enforce Test Recipient and Begin Attempt":{"main":[[{"node":"Local Mock or Explicit SES?","type":"main","index":0}]]},
+    "Local Mock or Explicit SES?":{"main":[[{"node":"Local Mock Acceptance (No Email)","type":"main","index":0}],[{"node":"AWS SES Send to Controlled Test Inbox","type":"main","index":0}]]},
+    "Local Mock Acceptance (No Email)":{"main":[[{"node":"Record Mock Result","type":"main","index":0}]]},
+    "Record Mock Result":{"main":[[{"node":"Fetch and Reserve Next User Group","type":"main","index":0}]]},
+    "AWS SES Send to Controlled Test Inbox":{"main":[[{"node":"Record SES Acceptance or Ambiguity","type":"main","index":0}]]},
+    "Record SES Acceptance or Ambiguity":{"main":[[{"node":"Fetch and Reserve Next User Group","type":"main","index":0}]]}
+  },
+  "settings":{"executionOrder":"v1","saveManualExecutions":true,"saveDataSuccessExecution":"none","saveDataErrorExecution":"none"},
+  "pinData":{},"tags":[]
+}

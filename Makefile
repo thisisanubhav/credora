@@ -1,6 +1,6 @@
 COMPOSE = docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml
 
-.PHONY: init check-env config up down logs status smoke db-upgrade db-status db-role db-connect db-test lint typecheck s3-init api ingestion-test ingestion-e2e discovery-test discovery-import discovery-run matching-import matching-dispatch matching-test matching-e2e matching-benchmark
+.PHONY: init check-env config up down logs status smoke db-upgrade db-status db-role db-connect db-test lint typecheck s3-init api ingestion-test ingestion-e2e discovery-test discovery-import discovery-run matching-import matching-dispatch matching-test matching-e2e matching-benchmark notification-import notification-test notification-e2e
 
 init:
 	python3 scripts/local_env.py init
@@ -82,6 +82,17 @@ matching-e2e: check-env
 
 matching-benchmark: check-env
 	uv run --frozen --env-file .env python -m benchmarks.eligibility.run
+
+notification-import: check-env
+	docker cp workflows/notifications.json $$(docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml ps -q n8n):/tmp/notifications.json
+	$(COMPOSE) exec -T n8n n8n import:workflow --input=/tmp/notifications.json
+
+notification-test: check-env
+	uv run --frozen --env-file .env python -m scripts.db_admin notification-test-database
+	uv run --frozen --env-file .env pytest tests/notifications
+
+notification-e2e: check-env
+	uv run --frozen --env-file .env python -m scripts.notification_e2e
 
 lint:
 	uv run --frozen ruff check apps services scripts tests benchmarks database/migrations
