@@ -1,6 +1,6 @@
 COMPOSE = docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml
 
-.PHONY: init check-env config up down logs status smoke db-upgrade db-status db-role db-connect db-test lint typecheck s3-init api ingestion-test ingestion-e2e discovery-test discovery-import discovery-run
+.PHONY: init check-env config up down logs status smoke db-upgrade db-status db-role db-connect db-test lint typecheck s3-init api ingestion-test ingestion-e2e discovery-test discovery-import discovery-run matching-import matching-dispatch matching-test matching-e2e matching-benchmark
 
 init:
 	python3 scripts/local_env.py init
@@ -66,8 +66,25 @@ discovery-import: check-env
 discovery-run: check-env
 	@set -e; $(COMPOSE) stop n8n; trap '$(COMPOSE) up -d --wait --wait-timeout 180 n8n' EXIT; $(COMPOSE) run --rm --no-deps n8n execute --id=loanDiscoveryM4
 
+matching-import: check-env
+	docker cp workflows/matching.json $$(docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml ps -q n8n):/tmp/matching.json
+	$(COMPOSE) exec -T n8n n8n import:workflow --input=/tmp/matching.json
+
+matching-dispatch: check-env
+	uv run --frozen --env-file .env python -m services.eligibility.dispatcher --once
+
+matching-test: check-env
+	uv run --frozen --env-file .env python -m scripts.db_admin matching-test-database
+	uv run --frozen --env-file .env pytest tests/matching
+
+matching-e2e: check-env
+	uv run --frozen --env-file .env python -m scripts.matching_e2e
+
+matching-benchmark: check-env
+	uv run --frozen --env-file .env python -m benchmarks.eligibility.run
+
 lint:
-	uv run --frozen ruff check apps services scripts tests database/migrations
+	uv run --frozen ruff check apps services scripts tests benchmarks database/migrations
 
 typecheck:
 	uv run --frozen mypy

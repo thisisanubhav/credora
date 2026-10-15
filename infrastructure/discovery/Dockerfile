@@ -7,7 +7,7 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir uv==0.12.3
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project --no-cache
 COPY apps ./apps
 COPY services ./services
 

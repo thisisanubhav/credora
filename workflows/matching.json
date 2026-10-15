@@ -1,0 +1,35 @@
+{
+  "id": "loanMatchingM5",
+  "name": "Workflow B - Optimized Eligibility Matching",
+  "active": false,
+  "nodes": [
+    {"id":"webhook","name":"Signed Matching Webhook","type":"n8n-nodes-base.webhook","typeVersion":2.1,"position":[0,200],"webhookId":"loan-matching-m5","parameters":{"httpMethod":"POST","path":"loan-matching","responseMode":"responseNode","options":{}}},
+    {"id":"verify","name":"Authenticate and Claim Event","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[220,200],"parameters":{"method":"POST","url":"http://discovery:8001/matching/accept","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({body:$json.body,headers:$json.headers}) }}","options":{"timeout":30000}}},
+    {"id":"accepted","name":"New or Resumable Event?","type":"n8n-nodes-base.if","typeVersion":2.2,"position":[440,200],"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":2},"conditions":[{"id":"accepted-condition","leftValue":"={{ $json.accepted === true }}","rightValue":true,"operator":{"type":"boolean","operation":"true"}}],"combinator":"and"}}},
+    {"id":"ack-new","name":"Acknowledge Durable Claim","type":"n8n-nodes-base.respondToWebhook","typeVersion":1.4,"position":[660,100],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({run_id:$json.run_id,batch_id:$json.batch_id,state:$json.state}) }}","options":{"responseCode":202}}},
+    {"id":"ack-duplicate","name":"Acknowledge Duplicate","type":"n8n-nodes-base.respondToWebhook","typeVersion":1.4,"position":[660,320],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({run_id:$json.run_id,batch_id:$json.batch_id,state:$json.state}) }}","options":{"responseCode":202}}},
+    {"id":"batch","name":"Load Batch Metadata","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[880,100],"parameters":{"method":"POST","url":"http://discovery:8001/matching/batch","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({run_id:$json.run_id}) }}","options":{"timeout":30000}}},
+    {"id":"prefilter","name":"SQL Candidate Prefilter","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[1100,100],"parameters":{"method":"POST","url":"http://discovery:8001/matching/candidates","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({run_id:$json.run_id,cursor:$json.next_cursor ?? null}) }}","options":{"timeout":60000}}},
+    {"id":"rules","name":"Deterministic Rule Evaluation","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[1320,100],"parameters":{"method":"POST","url":"http://discovery:8001/matching/evaluate","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify($json) }}","options":{"timeout":60000}}},
+    {"id":"gemini","name":"Selective Gemini Advisory","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[1540,100],"parameters":{"method":"POST","url":"http://discovery:8001/matching/gemini","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify($json) }}","options":{"timeout":60000}}},
+    {"id":"persist","name":"Persist Potential Matches","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[1760,100],"parameters":{"method":"POST","url":"http://discovery:8001/matching/persist","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify($json) }}","options":{"timeout":60000}}},
+    {"id":"more","name":"More Candidate Pages?","type":"n8n-nodes-base.if","typeVersion":2.2,"position":[1980,100],"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":2},"conditions":[{"id":"more-condition","leftValue":"={{ $json.next_cursor !== null }}","rightValue":true,"operator":{"type":"boolean","operation":"true"}}],"combinator":"and"}}},
+    {"id":"complete","name":"Commit Completion Event","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[2200,220],"parameters":{"method":"POST","url":"http://discovery:8001/matching/complete","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({run_id:$json.run_id,cursor:$json.cursor}) }}","options":{"timeout":30000}}},
+    {"id":"summary","name":"Execution Summary","type":"n8n-nodes-base.code","typeVersion":2,"position":[2420,220],"parameters":{"jsCode":"return $input.all().map(item => ({json:{run_id:item.json.run_id,status:item.json.status,candidates:item.json.metrics?.candidates,inserted_matches:item.json.metrics?.inserted_matches,llm_calls:item.json.metrics?.llm_calls}}));"}}
+  ],
+  "connections": {
+    "Signed Matching Webhook":{"main":[[{"node":"Authenticate and Claim Event","type":"main","index":0}]]},
+    "Authenticate and Claim Event":{"main":[[{"node":"New or Resumable Event?","type":"main","index":0}]]},
+    "New or Resumable Event?":{"main":[[{"node":"Acknowledge Durable Claim","type":"main","index":0}],[{"node":"Acknowledge Duplicate","type":"main","index":0}]]},
+    "Acknowledge Durable Claim":{"main":[[{"node":"Load Batch Metadata","type":"main","index":0}]]},
+    "Load Batch Metadata":{"main":[[{"node":"SQL Candidate Prefilter","type":"main","index":0}]]},
+    "SQL Candidate Prefilter":{"main":[[{"node":"Deterministic Rule Evaluation","type":"main","index":0}]]},
+    "Deterministic Rule Evaluation":{"main":[[{"node":"Selective Gemini Advisory","type":"main","index":0}]]},
+    "Selective Gemini Advisory":{"main":[[{"node":"Persist Potential Matches","type":"main","index":0}]]},
+    "Persist Potential Matches":{"main":[[{"node":"More Candidate Pages?","type":"main","index":0}]]},
+    "More Candidate Pages?":{"main":[[{"node":"SQL Candidate Prefilter","type":"main","index":0}],[{"node":"Commit Completion Event","type":"main","index":0}]]},
+    "Commit Completion Event":{"main":[[{"node":"Execution Summary","type":"main","index":0}]]}
+  },
+  "settings":{"executionOrder":"v1","saveManualExecutions":true,"saveDataSuccessExecution":"none","saveDataErrorExecution":"all"},
+  "pinData":{},"tags":[]
+}

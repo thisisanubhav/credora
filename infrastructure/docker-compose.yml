@@ -106,7 +106,11 @@ services:
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+      MATCHING_WEBHOOK_SECRET: ${MATCHING_WEBHOOK_SECRET:?Run python3 scripts/local_env.py extend-m5}
     read_only: true
+    volumes:
+      - ./apps:/app/apps:ro
+      - ./services:/app/services:ro
     tmpfs:
       - /tmp
     security_opt:
