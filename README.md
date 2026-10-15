@@ -15,11 +15,13 @@ npm ci --prefix apps/web --no-audit --no-fund
 make up
 make db-upgrade db-role s3-init smoke
 make discovery-import matching-import notification-import
-# Publish all three imported workflows in the loopback n8n editor at http://localhost:5678.
-# Importing an existing workflow deactivates it; publish again before webhook tests.
+docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml exec -T n8n n8n publish:workflow --id=loanDiscoveryM4
+docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml exec -T n8n n8n publish:workflow --id=loanMatchingM5
+docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml exec -T n8n n8n publish:workflow --id=loanNotificationsM6
+docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml restart n8n
 ```
 
-Open three more terminals for `make api`, `make local-worker`, and `make web-dev`; use <http://127.0.0.1:3107>. For the complete local matching/notification path, start `uv run --frozen --env-file .env python -m services.eligibility.dispatcher --watch` in another terminal and seed *only* the labelled synthetic fixtures with `uv run --frozen --env-file .env python -m scripts.seed_matching_demo` and `uv run --frozen --env-file .env python -m scripts.seed_notification_demo`. The UI's synthetic demo checkbox additionally requires `NEXT_PUBLIC_ENABLE_DEMO_UPLOAD=1` for `make web-dev`. Without it, uploaded users will not automatically match the incomplete bank criteria. Run `make notification-e2e` for a headless, real-local-boundary smoke test after B/C are published. The mock branch records notifications but sends nothing.
+Open the n8n editor at <http://localhost:5678> (complete its local owner setup if prompted). Open three more terminals for `make api`, `make local-worker`, and `make web-dev`; use <http://127.0.0.1:3107>. For the complete local matching/notification path, start `uv run --frozen --env-file .env python -m services.eligibility.dispatcher --watch` in another terminal and seed *only* the labelled synthetic fixtures with `uv run --frozen --env-file .env python -m scripts.seed_matching_demo` and `uv run --frozen --env-file .env python -m scripts.seed_notification_demo`. The UI's synthetic demo checkbox additionally requires `NEXT_PUBLIC_ENABLE_DEMO_UPLOAD=1` for `make web-dev`. Without it, uploaded users will not automatically match the incomplete bank criteria. Run `make notification-e2e` for a headless, real-local-boundary smoke test after B/C are published. The mock branch records notifications but sends nothing. If Docker restarts, rerun `make up s3-init` before browser upload; this was necessary in the clean-clone validation.
 
 See [fresh-checkout and demonstration steps](docs/submission-checklist.md) and the [final architecture diagrams](docs/final-architecture.md). Never copy an existing `.env` into a new checkout; `make init` generates local-only keys. All editor, API, S3-emulator, and database ports bind to loopback.
 
@@ -72,14 +74,14 @@ The local API is unauthenticated and loopback-only. The *future* AWS HTTP API te
 - [Zero-budget AWS design](docs/aws-deployment-design.md), [offline Serverless template](infrastructure/serverless.yml), and [local Compose](infrastructure/docker-compose.yml)
 - [Demo script](docs/final-demo-script.md), [demo checklist](docs/final-demo-checklist.md), and [submission checklist](docs/submission-checklist.md)
 
-## Planned flow
+## Pipeline flow
 
 1. The Next.js UI requests a short-lived presigned S3 POST and sends the CSV directly to S3 or local LocalStack.
 2. An S3 `ObjectCreated` event invokes a Python ingestion Lambda.
 3. The Lambda validates the CSV and atomically persists an upload batch and its users in PostgreSQL.
 4. The outbox dispatcher invokes an authenticated n8n matching webhook with the committed batch identifier.
 5. n8n runs set-based SQL pre-filtering, deterministic rules, and only then any necessary bounded LLM checks.
-6. Qualified matches are persisted idempotently; a notification workflow groups new matches by user and sends only to controlled test aliases through AWS SES.
+6. Qualified *potential* matches are persisted idempotently; Workflow C groups new matches by user. The local branch records mock-only notifications. A guarded AWS SES node exists but has not sent a real email.
 7. Separately, a scheduled n8n workflow discovers products from an allowlist of public sources, extracts source-grounded criteria with Gemini Flash where useful, validates the JSON deterministically, and upserts versioned products.
 
 See the [architecture](docs/architecture.md) for diagrams and failure handling.
@@ -101,7 +103,7 @@ See the [architecture](docs/architecture.md) for diagrams and failure handling.
 - [M9.1 requirement-by-requirement compliance](docs/assignment-compliance-final.md)
 - [M9.1 remediation and terminal workflow evidence](docs/m9-1-remediation.md)
 
-## Proposed repository layout
+## Repository layout
 
 ```text
 .
@@ -110,23 +112,22 @@ See the [architecture](docs/architecture.md) for diagrams and failure handling.
 │   └── web/                    # Minimal Next.js upload UI
 ├── services/
 │   ├── ingestion/              # S3-triggered CSV validation and persistence
-│   ├── discovery/              # Testable parser/Code-node sources used by n8n
-│   └── eligibility/            # Version-controlled SQL/Code-node sources used by n8n
+│   ├── discovery/              # Allowlisted crawler and source-grounded persistence steps
+│   ├── eligibility/            # SQL prefilter, deterministic rules, dispatcher
+│   └── notifications/          # Grouping, templates and reservations
 ├── workflows/
 │   ├── discovery.json          # Workflow A export
 │   ├── matching.json           # Workflow B export
 │   └── notifications.json      # Workflow C export
 ├── database/
-│   ├── migrations/             # Alembic migrations
-│   └── seeds/                  # Local-only deterministic fixtures
+│   └── migrations/             # Alembic migrations
 ├── infrastructure/
 │   ├── serverless.yml          # AWS declarations; no deployment is performed by default
 │   └── docker-compose.yml      # PostgreSQL, n8n, LocalStack S3 emulator
 ├── tests/
-│   ├── unit/
-│   ├── integration/
-│   ├── contract/
-│   └── e2e/
+│   ├── unit/                   # Schema and validation
+│   ├── integration/            # Real PostgreSQL migrations/constraints
+│   └── ingestion/, discovery/, matching/, notifications/, infrastructure/
 └── docs/
 ```
 
