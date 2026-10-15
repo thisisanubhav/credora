@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import uuid
 
@@ -23,6 +24,7 @@ class UploadRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=255)
     size_bytes: int = Field(gt=0)
     content_type: str
+    demo_mode: bool = False
 
 
 def _settings() -> Settings:
@@ -45,6 +47,8 @@ def create_upload(
         raise HTTPException(422, "filename must end in .csv and contain no path")
     if request.content_type not in {"text/csv", "application/csv"}:
         raise HTTPException(415, "content_type must be text/csv or application/csv")
+    if request.demo_mode and os.getenv("ALLOW_SYNTHETIC_DEMO") != "1":
+        raise HTTPException(403, "synthetic demo uploads are disabled")
     key_hash = hashlib.sha256(idempotency_key.encode()).hexdigest()
     fingerprint = hashlib.sha256(json.dumps(request.model_dump(), sort_keys=True).encode()).hexdigest()
     engine = make_engine()
@@ -57,7 +61,7 @@ def create_upload(
                     id=batch_id, object_bucket=settings.bucket,
                     object_key=f"uploads/{batch_id}/{uuid.uuid4().hex}.csv",
                     schema_version=1, idempotency_key_hash=key_hash,
-                    request_fingerprint=fingerprint,
+                    request_fingerprint=fingerprint, is_demo=request.demo_mode,
                 )
                 session.add(batch)
                 try:

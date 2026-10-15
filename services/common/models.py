@@ -56,6 +56,7 @@ class UploadBatch(Base):
     object_key: Mapped[str] = mapped_column(Text, nullable=False)
     object_version_id: Mapped[str | None] = mapped_column(Text)
     object_etag: Mapped[str | None] = mapped_column(Text)
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     idempotency_key_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
     request_fingerprint: Mapped[str | None] = mapped_column(String(64))
     processing_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
@@ -135,10 +136,12 @@ class ProductSource(Base):
         CheckConstraint("crawl_interval_hours > 0", name="ck_product_sources_interval"),
         CheckConstraint("char_length(name) BETWEEN 1 AND 255", name="ck_product_sources_name"),
         CheckConstraint("base_url LIKE 'https://%' AND discovery_url LIKE 'https://%'", name="ck_product_sources_https"),
+        CheckConstraint("source_type IN ('official','synthetic')", name="ck_product_sources_type"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    source_type: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'official'"))
     base_url: Mapped[str] = mapped_column(Text, nullable=False)
     discovery_url: Mapped[str] = mapped_column(Text, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
@@ -234,7 +237,7 @@ class OutboxEvent(Base):
     __tablename__ = "outbox_events"
     __table_args__ = (
         UniqueConstraint("aggregate_id", "event_type", name="uq_outbox_events_aggregate_type"),
-        CheckConstraint("event_type = 'upload_batch.ready.v1'", name="ck_outbox_events_type"),
+        CheckConstraint("event_type IN ('upload_batch.ready.v1','matching.completed.v1')", name="ck_outbox_events_type"),
         CheckConstraint("status IN ('pending','processing','delivered','failed_permanent')", name="ck_outbox_events_status"),
         CheckConstraint("retry_count >= 0", name="ck_outbox_events_retry_count"),
         CheckConstraint("jsonb_typeof(payload) = 'object'", name="ck_outbox_events_payload_object"),

@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / ".env.example"
 LOCAL = ROOT / ".env"
-SECRET_KEYS = ("POSTGRES_PASSWORD", "N8N_DB_PASSWORD", "N8N_ENCRYPTION_KEY", "APP_DB_PASSWORD")
+SECRET_KEYS = ("POSTGRES_PASSWORD", "N8N_DB_PASSWORD", "N8N_ENCRYPTION_KEY", "APP_DB_PASSWORD", "MATCHING_WEBHOOK_SECRET")
 REQUIRED = (
     "COMPOSE_PROJECT_NAME",
     "POSTGRES_DB",
@@ -31,6 +31,7 @@ REQUIRED = (
     "LOCALSTACK_PORT", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION",
     "S3_ENDPOINT_URL", "S3_BUCKET", "CSV_MAX_BYTES", "CSV_CHUNK_SIZE",
     "UPLOAD_URL_TTL_SECONDS", "INGESTION_LEASE_SECONDS",
+    "MATCHING_WEBHOOK_SECRET", "MATCHING_WEBHOOK_URL", "ALLOW_SYNTHETIC_DEMO",
 )
 
 
@@ -82,6 +83,10 @@ def validate(values):
     expected_url = f"http://localhost:{values['N8N_PORT']}/"
     if values["N8N_WEBHOOK_URL"] != expected_url:
         raise ValueError(f"N8N_WEBHOOK_URL must be {expected_url}")
+    if values["MATCHING_WEBHOOK_URL"] != f"http://127.0.0.1:{values['N8N_PORT']}/webhook/loan-matching":
+        raise ValueError("MATCHING_WEBHOOK_URL must point to the local matching webhook")
+    if values["ALLOW_SYNTHETIC_DEMO"] not in {"0", "1"}:
+        raise ValueError("ALLOW_SYNTHETIC_DEMO must be 0 or 1")
     if values["S3_ENDPOINT_URL"] != f"http://127.0.0.1:{values['LOCALSTACK_PORT']}":
         raise ValueError("S3_ENDPOINT_URL must point to loopback LocalStack")
     for key in ("CSV_MAX_BYTES", "CSV_CHUNK_SIZE", "UPLOAD_URL_TTL_SECONDS", "INGESTION_LEASE_SECONDS"):
@@ -162,11 +167,31 @@ def extend_m3():
     print("Local M3 environment ready (secret values hidden).")
 
 
+def extend_m5():
+    """Append local M5 transport settings without changing existing secrets."""
+    if not LOCAL.is_file():
+        raise ValueError(".env is missing; run `make init`")
+    values = parse_env(LOCAL)
+    template = parse_env(EXAMPLE)
+    additions = {key: template[key] for key in
+                 ("MATCHING_WEBHOOK_URL", "ALLOW_SYNTHETIC_DEMO") if key not in values}
+    if "MATCHING_WEBHOOK_SECRET" not in values:
+        additions["MATCHING_WEBHOOK_SECRET"] = secrets.token_hex(32)
+    validate(values | additions)
+    if additions:
+        with LOCAL.open("a", encoding="utf-8") as output:
+            output.write("\n# M5 local matching transport and synthetic-demo isolation\n")
+            for key, value in additions.items():
+                output.write(f"{key}={value}\n")
+        os.chmod(LOCAL, 0o600)
+    print("Local M5 environment ready (secret values hidden).")
+
+
 if __name__ == "__main__":
     try:
-        if len(sys.argv) != 2 or sys.argv[1] not in ("init", "check", "extend", "extend-m3"):
-            raise ValueError("usage: python3 scripts/local_env.py {init|check|extend|extend-m3}")
-        {"init": init, "check": check, "extend": extend, "extend-m3": extend_m3}[sys.argv[1]]()
+        if len(sys.argv) != 2 or sys.argv[1] not in ("init", "check", "extend", "extend-m3", "extend-m5"):
+            raise ValueError("usage: python3 scripts/local_env.py {init|check|extend|extend-m3|extend-m5}")
+        {"init": init, "check": check, "extend": extend, "extend-m3": extend_m3, "extend-m5": extend_m5}[sys.argv[1]]()
     except (OSError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         sys.exit(1)
