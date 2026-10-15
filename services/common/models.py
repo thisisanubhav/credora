@@ -29,15 +29,6 @@ class Base(DeclarativeBase):
     pass
 
 
-def id_column() -> Mapped[uuid.UUID]:
-    # A Python UUID default keeps IDs portable between PostgreSQL and Lambda/n8n.
-    return mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-
-
-def created_column() -> Mapped[datetime]:
-    return mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
-
-
 class UploadBatch(Base):
     __tablename__ = "upload_batches"
     __table_args__ = (
@@ -146,6 +137,7 @@ class LoanProduct(Base):
         CheckConstraint("source_url LIKE 'https://%'", name="ck_loan_products_source_https"),
         CheckConstraint("interest_rate_min_pct IS NULL OR interest_rate_min_pct >= 0", name="ck_loan_products_rate_min"),
         CheckConstraint("interest_rate_max_pct IS NULL OR interest_rate_max_pct >= interest_rate_min_pct OR interest_rate_min_pct IS NULL", name="ck_loan_products_rate_order"),
+        CheckConstraint("interest_rate_max_pct IS NULL OR interest_rate_max_pct >= 0", name="ck_loan_products_rate_max"),
         CheckConstraint("min_monthly_income IS NULL OR min_monthly_income >= 0", name="ck_loan_products_income"),
         CheckConstraint("min_credit_score IS NULL OR min_credit_score BETWEEN 0 AND 1000", name="ck_loan_products_score_min"),
         CheckConstraint("max_credit_score IS NULL OR max_credit_score BETWEEN 0 AND 1000", name="ck_loan_products_score_max"),
@@ -158,6 +150,17 @@ class LoanProduct(Base):
         CheckConstraint("rule_schema_version > 0", name="ck_loan_products_rule_schema"),
         CheckConstraint("extraction_method IN ('deterministic','gemini','mixed')", name="ck_loan_products_extraction_method"),
         CheckConstraint("verification_status IN ('verified','review_required','invalid','stale')", name="ck_loan_products_verification_status"),
+        CheckConstraint(
+            "verification_status <> 'verified' OR COALESCE(("
+            "eligibility_rules->>'completeness' = 'complete' "
+            "AND jsonb_typeof(eligibility_rules->'all') = 'array' "
+            "AND jsonb_typeof(eligibility_rules->'any') = 'array' "
+            "AND jsonb_typeof(eligibility_rules->'ambiguous') = 'array' "
+            "AND (jsonb_array_length(eligibility_rules->'all') + "
+            "jsonb_array_length(eligibility_rules->'any') + "
+            "jsonb_array_length(eligibility_rules->'ambiguous')) > 0), false)",
+            name="ck_loan_products_verified_rules",
+        ),
         CheckConstraint("extraction_method = 'deterministic' OR (model_name IS NOT NULL AND prompt_version IS NOT NULL)", name="ck_loan_products_model_provenance"),
         CheckConstraint("source_content_sha256 ~ '^[0-9a-f]{64}$'", name="ck_loan_products_content_hash"),
         Index("uq_loan_products_current", "source_id", "source_product_key", unique=True, postgresql_where=text("is_current")),
