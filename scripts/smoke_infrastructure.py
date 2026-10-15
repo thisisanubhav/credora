@@ -109,12 +109,14 @@ def check_runtime(values):
     require(cross_db.returncode != 0, "n8n internal role can connect to the application database")
     print("PASS: n8n internal role cannot connect to the application database")
 
-    query = "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"
-    app_tables = compose("exec", "-T", "postgres", "sh", "-c", app_command, "sh", query).stdout.strip()
-    n8n_tables = compose("exec", "-T", "postgres", "sh", "-c", n8n_command, "sh", query).stdout.strip()
-    require(app_tables == "0", "application database unexpectedly contains tables in M1")
-    require(n8n_tables.isdigit() and int(n8n_tables) > 0, "n8n did not initialize its own database")
-    print("PASS: application database has no business tables; n8n tables are isolated")
+    query = "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename"
+    app_tables = set(compose("exec", "-T", "postgres", "sh", "-c", app_command, "sh", query).stdout.splitlines())
+    n8n_tables = set(compose("exec", "-T", "postgres", "sh", "-c", n8n_command, "sh", query).stdout.splitlines())
+    m2_tables = {"alembic_version", "upload_batches", "users", "product_sources", "loan_products",
+                 "matches", "workflow_executions", "outbox_events", "notification_logs", "notification_matches"}
+    require(not app_tables or app_tables == m2_tables, "unexpected application database tables")
+    require(n8n_tables and not (n8n_tables & m2_tables), "n8n persistence is not isolated")
+    print("PASS: application schema is empty or at M2; n8n tables are isolated")
 
     url = f"http://127.0.0.1:{values['N8N_PORT']}/healthz"
     for attempt in range(10):
