@@ -76,7 +76,8 @@ def create_upload(
         raise HTTPException(422, "filename must end in .csv and contain no path")
     if request.content_type not in {"text/csv", "application/csv"}:
         raise HTTPException(415, "content_type must be text/csv or application/csv")
-    if request.demo_mode and os.getenv("ALLOW_SYNTHETIC_DEMO") != "1":
+    if request.demo_mode and (os.getenv("DEPLOYMENT_MODE", "local") != "local"
+                              or os.getenv("ALLOW_SYNTHETIC_DEMO") != "1"):
         raise HTTPException(403, "synthetic demo uploads are disabled")
     key_material = idempotency_key if owner is None else f"{owner}\0{idempotency_key}"
     key_hash = hashlib.sha256(key_material.encode()).hexdigest()

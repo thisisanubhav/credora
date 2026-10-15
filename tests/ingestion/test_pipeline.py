@@ -160,6 +160,9 @@ def test_api_gateway_jwt_subject_owns_batch(pipeline, monkeypatch):
     second = handler(event("POST", "/uploads", "subject-b", metadata), {})
     assert second["statusCode"] == 201
     assert json.loads(second["body"])["batch_id"] != batch_id
+    monkeypatch.setenv("ALLOW_SYNTHETIC_DEMO", "1")
+    synthetic = handler(event("POST", "/uploads", "subject-a", {**metadata, "demo_mode": True}), {})
+    assert synthetic["statusCode"] == 403
 
 
 @pytest.mark.parametrize(("content", "expected", "accepted", "rejected", "code"), [
