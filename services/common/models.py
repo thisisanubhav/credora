@@ -189,6 +189,8 @@ class LoanProduct(Base):
         ),
         CheckConstraint("extraction_method = 'deterministic' OR (model_name IS NOT NULL AND prompt_version IS NOT NULL)", name="ck_loan_products_model_provenance"),
         CheckConstraint("source_content_sha256 ~ '^[0-9a-f]{64}$'", name="ck_loan_products_content_hash"),
+        CheckConstraint("currency_code IS NULL OR currency_code ~ '^[A-Z]{3}$'", name="ck_loan_products_currency"),
+        CheckConstraint("jsonb_typeof(criterion_states) = 'object'", name="ck_loan_products_criterion_states"),
         Index("uq_loan_products_current", "source_id", "source_product_key", unique=True, postgresql_where=text("is_current")),
         Index("ix_loan_products_matchable", "source_id", postgresql_where=text("is_current AND verification_status = 'verified' AND retired_at IS NULL")),
     )
@@ -200,6 +202,8 @@ class LoanProduct(Base):
     is_current: Mapped[bool] = mapped_column(Boolean, nullable=False)
     product_name: Mapped[str] = mapped_column(Text, nullable=False)
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    currency_code: Mapped[str | None] = mapped_column(String(3))
+    criterion_states: Mapped[dict[str, str]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     interest_rate_min_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
     interest_rate_max_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
     interest_rate_text: Mapped[str | None] = mapped_column(Text)
