@@ -2,7 +2,7 @@
 
 An event-driven platform that ingests CSV batches, discovers personal-loan products, evaluates eligibility, and sends test notifications through workflows orchestrated by self-hosted n8n.
 
-> **Current phase:** M7 local frontend. The Next.js page requests a presigned POST from the existing FastAPI API, uploads directly to LocalStack, and displays actual batch counts and row errors. Workflows A/B/C remain self-hosted in n8n; notification delivery is test-only/mock by default. AWS resources have not been provisioned.
+> **Current phase:** M9 local QA. The browser-to-n8n path has been exercised with clearly labelled synthetic fixtures and mock-only notifications. AWS resources have not been provisioned; no real email has been sent.
 
 ## Planned flow
 
@@ -25,6 +25,11 @@ See the [architecture](docs/architecture.md) for diagrams and failure handling.
 - [Development roadmap](docs/development-roadmap.md)
 - [CSV contract and sample findings](docs/csv-contract.md)
 - [Frontend and browser evidence](docs/frontend-evidence.md)
+- [M9 assignment coverage and QA audit](docs/qa-audit.md)
+- [Security audit](docs/security-audit.md)
+- [Performance measurements](docs/performance-report.md)
+- [Bug fixes](docs/bug-fixes.md)
+- [Sanitized final test evidence](docs/final-test-evidence.md)
 
 ## Proposed repository layout
 
@@ -273,4 +278,8 @@ The authorized budget is **₹0**. M8 adds a future-oriented [Serverless definit
 From the repository root: `uv sync --frozen`, `make aws-config-offline aws-test`, then `make aws-package-local`. The latter builds ignored `.build/m8/lambda.zip` from pinned dependencies and checks handler imports/package size without AWS. `make aws-preflight-offline` checks future deployment environment-variable shapes only; see [non-secret variable template](infrastructure/aws.env.example). No deploy command is provided. Serverless CLI packaging itself can resolve AWS account/SSM/S3 state, so it is **not** an offline check and was not run. Keep `.env`, `infrastructure/aws.env`, credentials and keys private.
 
 See [deployment design](docs/aws-deployment-design.md), [conditional guide](docs/aws-deployment-guide.md), [cost inventory](docs/aws-cost-analysis.md), and [security review](docs/security-review.md). Future RDS, n8n hosting, identity provider, SES, and live AWS verification all require a separate approval and spending decision. The local M3–M7 setup remains unchanged.
+
+### M9 local QA replay
+
+`make up && make s3-init` restores the local containers and emulator bucket. Keep Workflow B/C imported and published, and run the local worker plus dispatcher watchers as documented above. For the opt-in browser-to-synthetic demonstration only, set `NEXT_PUBLIC_ENABLE_DEMO_UPLOAD=1` for the Next.js development server (the API also requires local `ALLOW_SYNTHETIC_DEMO=1`); select the conspicuously labelled checkbox. AWS mode rejects synthetic uploads regardless of that local switch. Run `NEXT_PUBLIC_ENABLE_DEMO_UPLOAD=1 npx playwright test tests/qa-real-local.spec.ts` from `apps/web` while FastAPI, the worker and dispatcher are running. The CSV goes from the real browser to LocalStack; n8n B/C may finish after the UI's ingestion-terminal view. All notifications are mock-only. The 10,000-row parser measurement is `uv run --frozen --env-file .env python -m benchmarks.ingestion.run`; it uses a guarded `_qa_ingestion_test` database and prints no sample emails. See the M9 audit links above for execution IDs, failure recovery and limitations.
 

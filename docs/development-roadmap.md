@@ -288,7 +288,7 @@ M8 implementation checkpoint (2026-10-15): the budget is explicitly ₹0. The na
 
 **Acceptance criteria**
 
-- Happy path produces expected database state and one captured email.
+- Happy path produces expected database state and a captured **mock notification** under the ₹0 policy; a received SES email remains explicitly unmet.
 - Duplicate S3/webhook/workflow execution produces no duplicate user/match/email.
 - Failed dependencies recover or land in a visible terminal state with a documented redrive.
 - The assignment sample CSV is tested without emailing its addresses.
@@ -298,6 +298,8 @@ M8 implementation checkpoint (2026-10-15): the budget is explicitly ₹0. The na
 **Dependencies:** M1-M8; approved use of the provided sample file.
 
 **Definition of done:** E2E evidence is repeatable from a clean checkout; all mandatory paths have automated or explicitly documented manual evidence.
+
+M9 implementation checkpoint (2026-10-15): a real Chromium browser upload passed through local FastAPI, LocalStack, the worker, PostgreSQL, signed dispatcher and actual n8n B/C, producing three synthetic matches and two mock-only notification records. Workflow A manually fetched its two permitted official sources. A real n8n outage left an event pending and it delivered on retry after restart. The 10,000-row ingestion/matching measurements, security findings, repairs and screenshots are recorded in the M9 audit documents. Live RDS/SES and a received email are still blocked by ₹0; internal helper authentication and cloud OIDC integration remain deployment blockers. M10 is not started.
 
 ## M10 - Documentation and submission readiness
 
