@@ -65,6 +65,8 @@ def setup_data(engine, monkeypatch):
     monkeypatch.setenv("NOTIFICATION_MODE", "test")
     monkeypatch.setenv("NOTIFICATION_TRANSPORT", "mock")
     monkeypatch.setenv("NOTIFICATION_SES_ENABLED", "0")
+    monkeypatch.delenv("NOTIFICATION_SES_AUTHORIZED_BATCH_ID", raising=False)
+    monkeypatch.delenv("NOTIFICATION_SES_AUTHORIZED_IDEMPOTENCY_KEY", raising=False)
     monkeypatch.setenv("NOTIFICATION_TEST_EMAIL", "owner+base@gmail.com")
     with engine.begin() as connection:
         connection.execute(text("TRUNCATE TABLE notification_matches, notification_logs, matches, workflow_executions, outbox_events, upload_row_errors, users, upload_batches, loan_products, product_sources CASCADE"))
