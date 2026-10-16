@@ -240,7 +240,7 @@ def release_recovery(app_engine: Engine, n8n_engine: Engine, *, event_id: uuid.U
             raise ValueError("release_demo_scope_invalid")
         execution_id = audit.metrics.get("n8n_execution_id")
         if not isinstance(execution_id, int):
-            raise ValueError("release_n8n_evidence_invalid")
+            raise TypeError("release_n8n_evidence_invalid")
         _n8n_failed_before_ses(n8n_engine, execution_id, run_id=run.id, batch_id=batch_id)
 
         release_audit = WorkflowExecution(
