@@ -26,12 +26,15 @@ from services.notifications.recovery import (
     PREFLIGHT_NODE,
     SES_NODE,
     prepare_recovery,
+    release_recovery,
 )
+from services.eligibility.dispatcher import claim_due, finish_attempt
 from services.notifications.storage import accept_event, next_reservation
 
 pytest_plugins = ["tests.notifications.test_notifications"]
 
 TOKEN = "local-test-recovery-authorization-000000000001"
+RELEASE_TOKEN = "local-test-release-authorization-0000000000001"
 N8N_ID = 176
 
 
@@ -215,3 +218,124 @@ def test_recovery_token_is_required(recoverable, monkeypatch):
     monkeypatch.delenv("NOTIFICATION_RECOVERY_TOKEN")
     with pytest.raises(ValueError, match="not_authorized"):
         _prepare(recoverable)
+
+
+@pytest.fixture
+def held(recoverable, monkeypatch):
+    monkeypatch.setenv("NOTIFICATION_RECOVERY_RELEASE_TOKEN", RELEASE_TOKEN)
+    return {**recoverable, "audit": _prepare(recoverable)}
+
+
+def _release(case, **overrides):
+    args = {"event_id": case["event"], "batch_id": case["batch"],
+            "notification_key": case["key"], "recovery_audit_id": case["audit"],
+            "authorization": RELEASE_TOKEN}
+    args.update(overrides)
+    return release_recovery(case["app"], case["n8n"], **args)
+
+
+def test_release_is_audited_targeted_only_and_does_not_dispatch(held):
+    case = held
+    release_id = _release(case)
+    with session_scope(case["app"]) as session:
+        event = session.get(OutboxEvent, case["event"])
+        log = session.get(NotificationLog, case["notification"])
+        audit = session.get(WorkflowExecution, release_id)
+        assert event.status == "pending" and event.next_attempt_at <= datetime.now(UTC)
+        assert event.payload["recovery_dispatch_scope"] == "targeted_only"
+        assert event.retry_count == 1 and event.last_error_code == "manual_recovery_released"
+        assert (log.status, log.attempt_count, log.ses_message_id) == ("reserved", 0, None)
+        assert audit.metrics["preparation_audit_id"] == str(case["audit"])
+        assert audit.metrics["notification_id"] == str(log.id)
+    assert claim_due(case["app"]) is None
+    with session_scope(case["app"]) as session:
+        assert session.get(OutboxEvent, case["event"]).status == "pending"
+    # An explicit ID can claim it; a retry must remain isolated from queue sweeps.
+    claim = claim_due(case["app"], only_event_id=case["event"])
+    assert claim is not None and claim["event_id"] == str(case["event"])
+    assert finish_attempt(case["app"], case["event"], claim["claim_expires_at"],
+                          delivered=False, error_code="test_timeout")
+    with session_scope(case["app"]) as session:
+        event = session.get(OutboxEvent, case["event"])
+        event.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
+    assert claim_due(case["app"]) is None
+
+
+@pytest.mark.parametrize("override,expected", [
+    ({"event_id": uuid.UUID("00000000-0000-4000-8000-000000000011")}, "event_not_held"),
+    ({"batch_id": uuid.UUID("00000000-0000-4000-8000-000000000012")}, "event_not_held"),
+    ({"notification_key": "0" * 64}, "reservation_not_eligible"),
+    ({"recovery_audit_id": uuid.UUID("00000000-0000-4000-8000-000000000013")}, "audit_mismatch"),
+    ({"authorization": "incorrect"}, "not_authorized"),
+])
+def test_release_wrong_scope_rejected(held, override, expected):
+    with pytest.raises(ValueError, match=expected):
+        _release(held, **override)
+
+
+def test_release_token_missing_rejected(held, monkeypatch):
+    monkeypatch.delenv("NOTIFICATION_RECOVERY_RELEASE_TOKEN")
+    with pytest.raises(ValueError, match="not_authorized"):
+        _release(held)
+
+
+@pytest.mark.parametrize("state,attempts,provider", [
+    ("reserved", 1, None), ("reserved", 0, "provider-id"),
+    ("ambiguous", 1, None), ("sending", 1, None),
+])
+def test_release_rejects_started_or_ambiguous_sends(held, state, attempts, provider):
+    with session_scope(held["app"]) as session:
+        log = session.get(NotificationLog, held["notification"])
+        log.status, log.attempt_count, log.ses_message_id = state, attempts, provider
+    with pytest.raises(ValueError, match="reservation_not_eligible"):
+        _release(held)
+
+
+def test_release_rechecks_n8n_evidence_and_recipient(held):
+    with session_scope(held["app"]) as session:
+        log = session.get(NotificationLog, held["notification"])
+        user = session.get(User, log.user_id)
+        log.recipient_alias = user.email
+    with pytest.raises(ValueError, match="recipient_not_controlled"):
+        _release(held)
+    with session_scope(held["app"]) as session:
+        log = session.get(NotificationLog, held["notification"])
+        log.recipient_alias = "controlled@example.test"
+    invalid = _evidence(held["run"], held["batch"], ses_seen=True)
+    try:
+        with pytest.raises(ValueError, match="ses_node_may_have_run"):
+            release_recovery(held["app"], invalid, event_id=held["event"],
+                             batch_id=held["batch"], notification_key=held["key"],
+                             recovery_audit_id=held["audit"], authorization=RELEASE_TOKEN)
+    finally:
+        invalid.dispose()
+
+
+def test_duplicate_and_concurrent_release_only_one_succeeds(held):
+    def attempt(_: int) -> str:
+        try:
+            _release(held)
+            return "released"
+        except ValueError:
+            return "rejected"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(attempt, range(2))) == ["rejected", "released"]
+    with pytest.raises(ValueError, match="event_not_held"):
+        _release(held)
+    with session_scope(held["app"]) as session:
+        assert session.scalar(select(func.count()).select_from(WorkflowExecution).where(
+            WorkflowExecution.workflow_type == "outbox_reconcile")) == 2
+
+
+def test_release_preserves_unrelated_event(held):
+    with session_scope(held["app"]) as session:
+        other = OutboxEvent(event_id=uuid.uuid4(), event_type="upload_batch.ready.v1",
+                            aggregate_id=held["batch"], payload={"test": True})
+        session.add(other)
+        other_id = other.event_id
+    _release(held)
+    with session_scope(held["app"]) as session:
+        other = session.get(OutboxEvent, other_id)
+        assert other.status == "pending" and other.retry_count == 0
+        assert "recovery_dispatch_scope" not in other.payload
