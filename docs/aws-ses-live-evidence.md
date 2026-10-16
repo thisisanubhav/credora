@@ -38,3 +38,22 @@ Read-only comparison after the attempt found that the workflow **draft** had the
 - A future live test requires separate authorization, a **new** synthetic batch and notification reservation, and a fresh preflight. This repair does not prove AWS acceptance or inbox delivery; the assignment's received-email requirement remains unmet.
 
 No AWS infrastructure was created, no unrelated AWS API operation was performed, and no additional SES send was attempted. This evidence does not satisfy the assignment's received-email demonstration requirement.
+
+## Second isolated authorization — 2026-10-16
+
+Status: **FAIL before SES / no AWS request**. The owner explicitly confirmed that account safeguards still covered one attempt within the ₹0 out-of-pocket limit. The one authorized completion event was dispatched exactly once; it reached Workflow C, but the notification preflight returned HTTP 422 before the AWS SES node. There was **no SES API response, Message ID, or recorded SES send attempt**. Inbox receipt was not independently checked for this run and is **NOT_RUN**; do not infer delivery.
+
+| Boundary | Observed result | Status |
+|---|---|---|
+| Final local preflight | Batch `e2bedf66-caa7-4a59-9d86-eabb0bbf732a` had one accepted synthetic user, one potential synthetic match, one pending completion event `28468b63-316a-53e7-ac10-450ebba1c17c`, no existing reservation, and no unrelated pending notification event. Published Workflow C used stored AWS credential `W656hx0hT7mFU3vm` configured for `eu-north-1`; sender/recipient expressions came from preflight. Sender and controlled recipient matched; their values are omitted. | PASS |
+| Scoped local activation | Ignored `.env` was set to test/SES/enabled/one attempt; the private helper restarted healthy and reflected those switches. No background dispatcher ran. | PASS |
+| Targeted signed dispatch | `dispatch_once(..., only_event_id=28468b63-316a-53e7-ac10-450ebba1c17c)` returned `delivered`, meaning durable webhook acceptance, **not** completed notification. The event is `delivered` with one dispatch claim. | PASS |
+| Workflow C | n8n execution **176**, terminal `error`, from 10:35:20.903 to 10:35:21.284 UTC (381 ms). Last node: **Enforce Test Recipient and Begin Attempt**. Its internal preflight request returned HTTP 422 `notification_step_rejected`. | FAIL |
+| SES node / provider | SES node was **not reached**. No AWS request, SES response, or Message ID was observed. | NOT_RUN |
+| New notification | Reservation `d27db780-33fd-47a3-a13e-d4579d3bb7f7` remains `reserved`, `attempt_count=0`, no Message ID. The application notification run remains `running` because the n8n error interrupted its completion path. No attempt was reset or retried. | PARTIAL |
+| Earlier notification | Original notification `1b8173e7-efcc-4f7a-ace5-013a964ff92d` remains `ambiguous`, `attempt_count=1`, with no Message ID. | PASS |
+| Mandatory rollback | Ignored `.env` and healthy helper returned to test/mock/disabled/zero; both scoped authorization values were cleared. Dispatcher is stopped. No outbox event is pending or processing. The new `reserved` row is preserved for investigation. | PASS |
+
+**Confirmed local root cause:** `infrastructure/docker-compose.yml` passes the SES mode, enabled switch, and attempt limit into the private `discovery`/notification helper, but omits `NOTIFICATION_SES_AUTHORIZED_BATCH_ID` and `NOTIFICATION_SES_AUTHORIZED_IDEMPOTENCY_KEY`. Thus the helper could not see the authorization present in ignored `.env`; `compose(..., begin_send=True)` rejected it with `ses_authorization_unconfigured` (inferred from the inspected configuration and gate code; the API deliberately exposes only the generic 422 response). The published credential binding was not the failing boundary this time. Correct the Compose variable propagation and add a regression test before any separately authorized future run. Do **not** replay this event or retry the preserved reservation under the exhausted authorization.
+
+This second dispatch does not satisfy actual SES sending or received-email requirements. No AWS resource was provisioned, and no real email was sent by this execution.
