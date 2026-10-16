@@ -7,9 +7,9 @@ import getpass
 import os
 import uuid
 
+from scripts.prepare_notification_recovery import n8n_read_engine
 from services.common.db import make_engine
 from services.notifications.recovery import release_recovery
-from scripts.prepare_notification_recovery import n8n_read_engine
 
 
 def main() -> None:
