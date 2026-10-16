@@ -339,3 +339,7 @@ def test_release_preserves_unrelated_event(held):
         other = session.get(OutboxEvent, other_id)
         assert other.status == "pending" and other.retry_count == 0
         assert "recovery_dispatch_scope" not in other.payload
+    ordinary = claim_due(held["app"])
+    assert ordinary is not None and ordinary["event_id"] == str(other_id)
+    with session_scope(held["app"]) as session:
+        assert session.get(OutboxEvent, held["event"]).status == "pending"
