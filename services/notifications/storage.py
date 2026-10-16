@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.engine import Engine
 
 from services.common.db import session_scope
@@ -149,6 +150,20 @@ def compose(engine: Engine, notification_id: uuid.UUID, *, begin_send: bool) -> 
             raise ValueError("notification_matches_invalid")
         content = render(products, synthetic=all(p["source_type"] == "synthetic" for p in products))
         if begin_send:
+            if log.delivery_mode == "ses":
+                # Serialize the one-off test gate across concurrent preflights.
+                # An ambiguous attempt consumes the allowance: it may have sent.
+                try:
+                    limit = int(os.environ.get("NOTIFICATION_SES_MAX_ATTEMPTS", "0"))
+                except ValueError as error:
+                    raise ValueError("ses_attempt_limit_invalid") from error
+                if limit != 1:
+                    raise ValueError("ses_one_shot_not_enabled")
+                session.execute(text("SELECT pg_advisory_xact_lock(1799620601)"))
+                attempts = session.scalar(select(func.count()).select_from(NotificationLog).where(
+                    NotificationLog.delivery_mode == "ses", NotificationLog.attempt_count > 0))
+                if attempts:
+                    raise ValueError("ses_send_limit_reached")
             log.status = "sending"
             log.attempt_count += 1
             log.last_attempt_at = datetime.now(UTC)
