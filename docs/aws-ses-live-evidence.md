@@ -1,6 +1,6 @@
 # Controlled SES attempt — 2026-10-16
 
-Status: **PARTIAL**. The application reached the real n8n AWS SES node exactly once, but n8n rejected the node locally with `Node does not have any credentials set`. There is **no SES API response, SES Message ID, or independently confirmed inbox receipt**. Do not present this as a delivered email or retry the ambiguous notification without separate authorization.
+Status: **PARTIAL**. The application reached the real n8n AWS SES node exactly once, but n8n rejected the node locally with `Node does not have any credentials set`. There is **no SES API response or SES Message ID**. The owner independently checked the controlled Inbox and Spam folder and reported **not received**. Do not present this as a delivered email or retry the ambiguous notification without separate authorization.
 
 ## Scope and procedure
 
@@ -20,7 +20,7 @@ Status: **PARTIAL**. The application reached the real n8n AWS SES node exactly o
 | Notification preflight | One reserved notification became `sending`; `attempt_count=1` | PASS |
 | AWS SES node | Ran once but returned `Node does not have any credentials set`; no provider response or Message ID | FAIL |
 | Notification database | One row, `delivery_mode=ses`, `status=ambiguous`, `attempt_count=1`, no SES Message ID; error code `ses_node_error_or_timeout` | PARTIAL |
-| Controlled inbox | Not independently confirmed; owner was asked to inspect Inbox and Spam | NOT_RUN |
+| Controlled inbox | Owner checked Inbox and Spam and reported **not received**; no email screenshot exists | FAIL |
 | Rollback | Helper healthy in `mock` mode, SES disabled, one-attempt limit zero; dispatcher stopped; no pending/processing outbox events | PASS |
 
 The application marks the result ambiguous because the SES node's `onError=continueRegularOutput` path records a missing provider ID conservatively. The node's specific error indicates that this attempt did **not** reach a usable AWS credential. n8n marked the workflow execution successful because the error was handled; that status is not email-delivery evidence.
