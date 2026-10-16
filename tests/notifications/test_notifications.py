@@ -306,6 +306,14 @@ def test_ses_one_shot_preflight_gate(setup_data, monkeypatch):
     monkeypatch.setenv("NOTIFICATION_SES_MAX_ATTEMPTS", "1")
     with pytest.raises(ValueError, match="ses_authorization_unconfigured"):
         compose(engine, first_id, begin_send=True)
+    monkeypatch.setenv("NOTIFICATION_SES_AUTHORIZED_BATCH_ID", str(setup_data[1]))
+    with pytest.raises(ValueError, match="ses_authorization_unconfigured"):
+        compose(engine, first_id, begin_send=True)
+    monkeypatch.setenv("NOTIFICATION_SES_AUTHORIZED_IDEMPOTENCY_KEY", "0" * 64)
+    with pytest.raises(ValueError, match="ses_authorization_mismatch"):
+        compose(engine, first_id, begin_send=True)
+    with session_scope(engine) as session:
+        assert session.get(NotificationLog, first_id).attempt_count == 0
     _authorize_ses(setup_data, first_id, monkeypatch)
     prepared = compose(engine, first_id, begin_send=True)
     assert prepared["recipient"] == "owner+verified@gmail.com"
