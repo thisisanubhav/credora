@@ -169,3 +169,92 @@ def prepare_recovery(app_engine: Engine, n8n_engine: Engine, *, event_id: uuid.U
         event.last_error_code = "manual_recovery_held"
         session.flush()
         return audit.id
+
+
+def release_recovery(app_engine: Engine, n8n_engine: Engine, *, event_id: uuid.UUID,
+                     batch_id: uuid.UUID, notification_key: str,
+                     recovery_audit_id: uuid.UUID, authorization: str) -> uuid.UUID:
+    """Audit and release one held event for *targeted* dispatch, without dispatching it."""
+    expected = os.environ.get("NOTIFICATION_RECOVERY_RELEASE_TOKEN", "")
+    if len(expected) < 32 or len(authorization) < 32 or not compare_digest(authorization, expected):
+        raise ValueError("release_not_authorized")
+    if (os.environ.get("NOTIFICATION_MODE") != "test" or
+            os.environ.get("NOTIFICATION_TRANSPORT") != "mock" or
+            os.environ.get("NOTIFICATION_SES_ENABLED") != "0" or
+            os.environ.get("NOTIFICATION_SES_MAX_ATTEMPTS") != "0"):
+        raise ValueError("release_requires_safe_mock_mode")
+
+    now = datetime.now(UTC)
+    with session_scope(app_engine) as session:
+        event = session.scalar(select(OutboxEvent).where(
+            OutboxEvent.event_id == event_id).with_for_update())
+        if (event is None or event.aggregate_id != batch_id or
+                event.event_type != "matching.completed.v1" or event.status != "pending" or
+                event.next_attempt_at != HOLD_UNTIL or
+                event.last_error_code != "manual_recovery_held" or
+                event.claimed_at is not None or event.claim_expires_at is not None or
+                event.payload.get("recovery_dispatch_scope") is not None):
+            raise ValueError("release_event_not_held")
+        audit = session.scalar(select(WorkflowExecution).where(
+            WorkflowExecution.id == recovery_audit_id).with_for_update())
+        if (audit is None or audit.workflow_type != "outbox_reconcile" or
+                audit.status != "succeeded" or audit.upload_batch_id != batch_id or
+                audit.metrics.get("action") != "manual_notification_recovery_prepared" or
+                audit.metrics.get("event_id") != str(event_id) or
+                audit.metrics.get("hold_until") != HOLD_UNTIL.isoformat()):
+            raise ValueError("release_audit_mismatch")
+        run = session.scalar(select(WorkflowExecution).where(
+            WorkflowExecution.event_id == event_id).with_for_update())
+        if (run is None or audit.parent_execution_id != run.id or
+                run.workflow_type != "notification" or run.upload_batch_id != batch_id or
+                run.status != "running" or run.metrics.get("cursor") is not None):
+            raise ValueError("release_run_mismatch")
+        logs = session.scalars(select(NotificationLog).where(
+            NotificationLog.workflow_execution_id == run.id).with_for_update()).all()
+        if len(logs) != 1:
+            raise ValueError("release_reservation_count_invalid")
+        log = logs[0]
+        if (audit.metrics.get("notification_id") != str(log.id) or
+                log.status != "reserved" or log.attempt_count != 0 or
+                log.last_attempt_at is not None or log.ses_message_id is not None or
+                log.delivery_mode != "ses" or
+                not compare_digest(notification_key, idempotency_key(batch_id, log.user_id)) or
+                not compare_digest(notification_key, log.idempotency_key)):
+            raise ValueError("release_reservation_not_eligible")
+        controlled = os.environ.get("NOTIFICATION_TEST_EMAIL", "").strip().lower()
+        user = session.get(User, log.user_id)
+        batch = session.get(UploadBatch, batch_id)
+        if (batch is None or not batch.is_demo or batch.status != "matched" or
+                user is None or user.upload_batch_id != batch_id or not controlled or
+                log.recipient_alias != controlled or log.recipient_alias == user.email):
+            raise ValueError("release_recipient_not_controlled")
+        links = session.execute(select(NotificationMatch, Match, LoanProduct, ProductSource).join(
+            Match, NotificationMatch.match_id == Match.id).join(
+            LoanProduct, Match.product_id == LoanProduct.id).join(
+            ProductSource, LoanProduct.source_id == ProductSource.id).where(
+            NotificationMatch.notification_id == log.id)).all()
+        if (len(links) != 1 or links[0][1].user_id != user.id or
+                links[0][1].status != "potential" or
+                links[0][2].verification_status != "verified" or
+                links[0][3].source_type != "synthetic"):
+            raise ValueError("release_demo_scope_invalid")
+        execution_id = audit.metrics.get("n8n_execution_id")
+        if not isinstance(execution_id, int):
+            raise ValueError("release_n8n_evidence_invalid")
+        _n8n_failed_before_ses(n8n_engine, execution_id, run_id=run.id, batch_id=batch_id)
+
+        release_audit = WorkflowExecution(
+            id=uuid.uuid4(), workflow_type="outbox_reconcile", status="succeeded",
+            parent_execution_id=run.id, upload_batch_id=batch_id,
+            started_at=now, finished_at=now,
+            metrics={"action": "manual_notification_recovery_released",
+                     "event_id": str(event_id), "notification_id": str(log.id),
+                     "preparation_audit_id": str(recovery_audit_id),
+                     "dispatch_scope": "targeted_only"},
+        )
+        session.add(release_audit)
+        event.payload = {**event.payload, "recovery_dispatch_scope": "targeted_only"}
+        event.next_attempt_at = now
+        event.last_error_code = "manual_recovery_released"
+        session.flush()
+        return release_audit.id
