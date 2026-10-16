@@ -8,13 +8,15 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, delete, func, select, text
 from sqlalchemy.pool import StaticPool
 
 from services.common.db import session_scope
 from services.common.models import (
+    Match,
     NotificationLog,
     OutboxEvent,
+    UploadBatch,
     User,
     WorkflowExecution,
 )
@@ -26,12 +28,24 @@ from services.notifications.recovery import (
     prepare_recovery,
 )
 from services.notifications.storage import accept_event, next_reservation
-from tests.notifications.test_notifications import _isolate_single_demo_match
 
 pytest_plugins = ["tests.notifications.test_notifications"]
 
 TOKEN = "local-test-recovery-authorization-000000000001"
 N8N_ID = 176
+
+
+def _isolate_single_demo_match(data):  # type: ignore[no-untyped-def]
+    app, batch_id, _, _ = data
+    with session_scope(app) as session:
+        user_id = session.scalar(select(Match.user_id).group_by(Match.user_id).having(func.count() == 1))
+        assert user_id is not None
+        session.execute(delete(Match).where(Match.user_id != user_id))
+        session.execute(delete(User).where(User.id != user_id))
+        batch = session.get(UploadBatch, batch_id)
+        assert batch is not None
+        batch.accepted_rows = batch.total_rows = 1
+    return user_id
 
 
 def _evidence(run_id: uuid.UUID, batch_id: uuid.UUID, *, status: str = "error",
