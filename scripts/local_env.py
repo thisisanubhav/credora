@@ -4,6 +4,7 @@ import os
 import re
 import secrets
 import sys
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -106,6 +107,8 @@ def validate(values):
         raise ValueError("M6 permits test-only mock or SES transport")
     if values["NOTIFICATION_SES_ENABLED"] not in {"0", "1"}:
         raise ValueError("NOTIFICATION_SES_ENABLED must be 0 or 1")
+    if values.get("NOTIFICATION_SES_MAX_ATTEMPTS", "0") not in {"0", "1"}:
+        raise ValueError("NOTIFICATION_SES_MAX_ATTEMPTS must be 0 or 1")
     if values["NOTIFICATION_WEBHOOK_URL"] != f"http://127.0.0.1:{values['N8N_PORT']}/webhook/loan-notifications":
         raise ValueError("NOTIFICATION_WEBHOOK_URL must point to local n8n")
     if not re.fullmatch(r"http://(?:localhost|127\.0\.0\.1):[1-9][0-9]{0,4}", values["FRONTEND_ORIGIN"]):
@@ -113,9 +116,18 @@ def validate(values):
     for key in ("NOTIFICATION_TEST_EMAIL", "NOTIFICATION_FROM_EMAIL"):
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", values[key]):
             raise ValueError(f"{key} must be an email address")
-    if values["NOTIFICATION_TRANSPORT"] == "ses" and (values["NOTIFICATION_SES_ENABLED"] != "1"
-            or any(values[key].endswith("@example.invalid") for key in ("NOTIFICATION_TEST_EMAIL", "NOTIFICATION_FROM_EMAIL"))):
-        raise ValueError("SES requires explicit enablement and non-placeholder verified identities")
+    if values["NOTIFICATION_TRANSPORT"] == "ses":
+        if (values["NOTIFICATION_SES_ENABLED"] != "1" or
+                values.get("NOTIFICATION_SES_MAX_ATTEMPTS") != "1" or
+                any(values[key].endswith("@example.invalid") for key in
+                    ("NOTIFICATION_TEST_EMAIL", "NOTIFICATION_FROM_EMAIL"))):
+            raise ValueError("SES requires one-attempt enablement and non-placeholder verified identities")
+        try:
+            uuid.UUID(values.get("NOTIFICATION_SES_AUTHORIZED_BATCH_ID", ""))
+        except ValueError as error:
+            raise ValueError("SES requires a new authorized batch UUID") from error
+        if not re.fullmatch(r"[0-9a-f]{64}", values.get("NOTIFICATION_SES_AUTHORIZED_IDEMPOTENCY_KEY", "")):
+            raise ValueError("SES requires one authorized notification key")
     if values["S3_ENDPOINT_URL"] != f"http://127.0.0.1:{values['LOCALSTACK_PORT']}":
         raise ValueError("S3_ENDPOINT_URL must point to loopback LocalStack")
     for key in ("CSV_MAX_BYTES", "CSV_CHUNK_SIZE", "UPLOAD_URL_TTL_SECONDS", "INGESTION_LEASE_SECONDS"):
