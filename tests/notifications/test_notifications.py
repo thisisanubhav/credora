@@ -28,7 +28,13 @@ from services.common.models import (
     WorkflowExecution,
 )
 from services.eligibility.transport import signature, verify
-from services.notifications.content import DISCLAIMER, idempotency_key, recipient_for, render, transport_mode
+from services.notifications.content import (
+    DISCLAIMER,
+    idempotency_key,
+    recipient_for,
+    render,
+    transport_mode,
+)
 from services.notifications.storage import (
     accept_event,
     compose,
