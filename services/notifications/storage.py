@@ -173,6 +173,13 @@ def compose(engine: Engine, notification_id: uuid.UUID, *, begin_send: bool) -> 
                         not compare_digest(log.idempotency_key, expected_key) or
                         len(products) != 1 or products[0]["source_type"] != "synthetic"):
                     raise ValueError("ses_authorization_mismatch")
+                user_count = session.scalar(select(func.count()).select_from(User).where(
+                    User.upload_batch_id == batch.id))
+                potential_count = session.scalar(select(func.count()).select_from(Match).join(
+                    User, Match.user_id == User.id).where(
+                    User.upload_batch_id == batch.id, Match.status == "potential"))
+                if user_count != 1 or potential_count != 1:
+                    raise ValueError("ses_demo_scope_not_single")
                 # Serialize concurrent preflights. An ambiguous attempt in
                 # this batch consumes its allowance; attempts in older batches
                 # remain immutable but do not consume a new authorization.
