@@ -20,6 +20,7 @@ from services.common.models import (
     User,
     WorkflowExecution,
 )
+from services.eligibility.dispatcher import claim_due, finish_attempt
 from services.notifications.content import idempotency_key
 from services.notifications.recovery import (
     ACCEPT_NODE,
@@ -28,7 +29,6 @@ from services.notifications.recovery import (
     prepare_recovery,
     release_recovery,
 )
-from services.eligibility.dispatcher import claim_due, finish_attempt
 from services.notifications.storage import accept_event, next_reservation
 
 pytest_plugins = ["tests.notifications.test_notifications"]
