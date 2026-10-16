@@ -15,7 +15,6 @@ from services.common.db import session_scope
 from services.common.models import (
     NotificationLog,
     OutboxEvent,
-    UploadBatch,
     User,
     WorkflowExecution,
 )
@@ -27,11 +26,9 @@ from services.notifications.recovery import (
     prepare_recovery,
 )
 from services.notifications.storage import accept_event, next_reservation
-from tests.notifications.test_notifications import (  # noqa: F401
-    _isolate_single_demo_match,
-    engine,
-    setup_data,
-)
+from tests.notifications.test_notifications import _isolate_single_demo_match
+
+pytest_plugins = ["tests.notifications.test_notifications"]
 
 TOKEN = "local-test-recovery-authorization-000000000001"
 N8N_ID = 176
