@@ -21,6 +21,10 @@ def recipient_for(user_id: uuid.UUID) -> str:
     configured = os.environ.get("NOTIFICATION_TEST_EMAIL", "").strip().lower()
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", configured):
         raise ValueError("test_recipient_unconfigured")
+    # SES sandbox recipients must match a verified identity exactly. In
+    # particular, a Gmail plus-address is not the same SES email identity.
+    if transport_mode() == "ses":
+        return configured
     local, domain = configured.rsplit("@", 1)
     if domain in {"gmail.com", "googlemail.com"}:
         return f"{local.split('+', 1)[0]}+loan-{str(user_id)[:8]}@{domain}"
