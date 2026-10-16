@@ -43,3 +43,24 @@ For option A, require a single-event recovery operation that locks and verifies 
 4. Only under that new authorization, enable SES for exactly one targeted attempt. Observe the n8n **terminal status and SES node result**, not merely the outbox `delivered` status. Preserve any ambiguous outcome; do not retry automatically. Restore mock mode immediately afterward.
 
 Current readiness: **safe to plan a targeted recovery; not ready to send**. Actual AWS SES acceptance and inbox receipt remain unverified for execution 176.
+
+## Implemented no-send recovery preparation (2026-10-16)
+
+`services/notifications/recovery.py` now implements `prepare_recovery(...)`; `scripts/prepare_notification_recovery.py` is its explicit operator entry point. **Neither was run against the live application database in this milestone.** The operation requires the exact event UUID, batch UUID, notification idempotency key, n8n execution ID, and a separately entered 32+ character recovery token matching an environment-held token. It only operates in test/mock mode with SES disabled and attempt limit zero. The operator command prompts for the token without echoing it; the key is read from ignored local configuration, not a command-line argument.
+
+In one application transaction it locks the exact delivered outbox row, the existing notification run, and its sole reservation. It requires a matched synthetic batch; a stale, still-running application execution with no cursor; one `reserved` SES-mode notification with `attempt_count=0`, no last attempt and no Message ID; the exact deterministic key; the configured controlled recipient rather than the CSV address; and exactly one linked verified synthetic potential match for one user. It reads the n8n database **read-only** and requires a terminal `error` for Workflow C, a failed preflight node, no SES-node run data, and the saved durable-acceptance output identifying the same application run and batch. Missing or pruned n8n evidence fails closed.
+
+On success it creates a `workflow_executions` audit row of type `outbox_reconcile`, linked to the original notification run, recording the event, reservation and n8n execution IDs and prior dispatch count. It changes **only the named outbox event** to `pending` with `next_attempt_at=9999-12-31` and `last_error_code=manual_recovery_held`. That far-future hold means a running dispatcher cannot claim it merely because preparation occurred. It does **not** alter the notification, its attempt count, the original run, the previous ambiguous record, or any other event. Row locks serialize concurrent requests; a second request rejects because the event is no longer `delivered`. The audit row's `succeeded` status means **recovery preparation succeeded**, not notification delivery.
+
+The new operator variables in `.env.example` default blank: `NOTIFICATION_RECOVERY_TOKEN` and `NOTIFICATION_RECOVERY_IDEMPOTENCY_KEY`. These are separate from the SES send gate and do not enable SES. A future operator must generate a fresh private token, fill these values only in ignored local `.env`, independently verify execution 176 and account safeguards, and obtain explicit authorization **before** running the following *preparation-only* command:
+
+```bash
+uv run --frozen --env-file .env python -m scripts.prepare_notification_recovery --prepare \
+  --event-id 28468b63-316a-53e7-ac10-450ebba1c17c \
+  --batch-id e2bedf66-caa7-4a59-9d86-eabb0bbf732a \
+  --n8n-execution-id 176
+```
+
+The command prompts privately for the recovery token. It does not start a dispatcher, invoke Workflow C, release the hold, or send email. **Do not run it merely to check status.** A later SES attempt needs its own authorization plus a separately implemented/reviewed, event-specific **release of the hold** and targeted dispatch; no such release was performed or silently added here. Do not use unscoped `reconcile_stale` or manually edit the row without the corresponding safety checks. This preserves an intentional safety barrier between recovery preparation and sending.
+
+Isolated verification: `tests/notifications/test_recovery.py` exercises valid preparation, incorrect event/batch/key, missing or wrong token, SES-started/ambiguous/provider-ID records, recent runs, missing or conflicting n8n evidence, CSV-recipient rejection, duplicate/concurrent requests, audit creation, unchanged reservation and attempt count, and unrelated-event preservation. Its n8n evidence is a minimal synthetic SQLite fixture; the application side uses the dedicated PostgreSQL test database. These tests do **not** demonstrate a live recovery or an SES send.
