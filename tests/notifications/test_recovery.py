@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -28,7 +27,11 @@ from services.notifications.recovery import (
     prepare_recovery,
 )
 from services.notifications.storage import accept_event, next_reservation
-from tests.notifications.test_notifications import _isolate_single_demo_match, setup_data  # noqa: F401
+from tests.notifications.test_notifications import (  # noqa: F401
+    _isolate_single_demo_match,
+    engine,
+    setup_data,
+)
 
 TOKEN = "local-test-recovery-authorization-000000000001"
 N8N_ID = 176
