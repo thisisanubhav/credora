@@ -162,6 +162,7 @@ def test_ses_acceptance_and_uncertain_failure_are_distinct(setup_data, monkeypat
     engine, _, _, _ = setup_data
     monkeypatch.setenv("NOTIFICATION_TRANSPORT", "ses")
     monkeypatch.setenv("NOTIFICATION_SES_ENABLED", "1")
+    monkeypatch.setenv("NOTIFICATION_SES_MAX_ATTEMPTS", "1")
     monkeypatch.setenv("NOTIFICATION_TEST_EMAIL", "owner@gmail.com")
     monkeypatch.setenv("NOTIFICATION_FROM_EMAIL", "sender@verified.test")
     run_id = _start(setup_data)
@@ -172,6 +173,16 @@ def test_ses_acceptance_and_uncertain_failure_are_distinct(setup_data, monkeypat
     with session_scope(engine) as session:
         log = session.get(NotificationLog, notification_id)
         assert log.ses_message_id == "ses-test-message-id" and log.sent_at is not None
+
+
+def test_ses_uncertain_failure_is_not_marked_sent(setup_data, monkeypatch):
+    engine, _, _, _ = setup_data
+    monkeypatch.setenv("NOTIFICATION_TRANSPORT", "ses")
+    monkeypatch.setenv("NOTIFICATION_SES_ENABLED", "1")
+    monkeypatch.setenv("NOTIFICATION_SES_MAX_ATTEMPTS", "1")
+    monkeypatch.setenv("NOTIFICATION_TEST_EMAIL", "owner@gmail.com")
+    monkeypatch.setenv("NOTIFICATION_FROM_EMAIL", "sender@verified.test")
+    run_id = _start(setup_data)
     item = next_reservation(engine, run_id)
     notification_id = uuid.UUID(item["notification_id"])
     compose(engine, notification_id, begin_send=True)
@@ -189,6 +200,10 @@ def test_test_recipient_and_html_escaping(monkeypatch):
     monkeypatch.setenv("NOTIFICATION_MODE", "test")
     monkeypatch.setenv("NOTIFICATION_TEST_EMAIL", "owner+first@gmail.com")
     assert recipient_for(uuid.UUID("11111111-1111-1111-1111-111111111111")) == "owner+loan-11111111@gmail.com"
+    monkeypatch.setenv("NOTIFICATION_TRANSPORT", "ses")
+    monkeypatch.setenv("NOTIFICATION_SES_ENABLED", "1")
+    monkeypatch.setenv("NOTIFICATION_FROM_EMAIL", "owner+first@gmail.com")
+    assert recipient_for(uuid.UUID("11111111-1111-1111-1111-111111111111")) == "owner+first@gmail.com"
     product = {"institution": "<Bank>", "name": "A & B", "source_url": "https://example.invalid/?x=\"bad\"",
                "source_type": "synthetic", "rate": None}
     content = render([product], synthetic=True)
@@ -210,6 +225,68 @@ def test_ses_default_disabled_and_workflow_contract(monkeypatch):
             "AWS SES Send to Controlled Test Inbox", "Record SES Acceptance or Ambiguity"} <= names
     assert any(node["type"] == "n8n-nodes-base.awsSes" for node in workflow["nodes"])
     assert "MATCHING_WEBHOOK_SECRET" not in raw and "AWS_SECRET_ACCESS_KEY" not in raw
+
+
+def test_ses_one_shot_preflight_gate(setup_data, monkeypatch):
+    engine, _, _, _ = setup_data
+    monkeypatch.setenv("NOTIFICATION_TRANSPORT", "ses")
+    monkeypatch.setenv("NOTIFICATION_SES_ENABLED", "1")
+    monkeypatch.setenv("NOTIFICATION_TEST_EMAIL", "owner+verified@gmail.com")
+    monkeypatch.setenv("NOTIFICATION_FROM_EMAIL", "owner+verified@gmail.com")
+    run_id = _start(setup_data)
+    first = next_reservation(engine, run_id)
+    first_id = uuid.UUID(first["notification_id"])
+    with pytest.raises(ValueError, match="ses_one_shot_not_enabled"):
+        compose(engine, first_id, begin_send=True)
+    with session_scope(engine) as session:
+        assert session.get(NotificationLog, first_id).attempt_count == 0
+    monkeypatch.setenv("NOTIFICATION_SES_MAX_ATTEMPTS", "1")
+    prepared = compose(engine, first_id, begin_send=True)
+    assert prepared["recipient"] == "owner+verified@gmail.com"
+    # Simulate only the result callback; no SES node or AWS request is run.
+    record_result(engine, first_id, message_id="test-only-provider-id")
+    second = next_reservation(engine, run_id)
+    second_id = uuid.UUID(second["notification_id"])
+    with pytest.raises(ValueError, match="ses_send_limit_reached"):
+        compose(engine, second_id, begin_send=True)
+    with session_scope(engine) as session:
+        assert session.get(NotificationLog, second_id).attempt_count == 0
+
+
+def test_concurrent_ses_preflights_allow_only_one(setup_data, monkeypatch):
+    engine, _, _, users = setup_data
+    monkeypatch.setenv("NOTIFICATION_TRANSPORT", "ses")
+    monkeypatch.setenv("NOTIFICATION_SES_ENABLED", "1")
+    monkeypatch.setenv("NOTIFICATION_SES_MAX_ATTEMPTS", "1")
+    monkeypatch.setenv("NOTIFICATION_TEST_EMAIL", "owner+verified@gmail.com")
+    monkeypatch.setenv("NOTIFICATION_FROM_EMAIL", "owner+verified@gmail.com")
+    run_id = _start(setup_data)
+    first_id = uuid.UUID(next_reservation(engine, run_id)["notification_id"])
+    second_id = uuid.uuid4()
+    with session_scope(engine) as session:
+        other_user = next(user_id for user_id in users[:2]
+                          if user_id != session.get(NotificationLog, first_id).user_id)
+        session.add(NotificationLog(id=second_id, workflow_execution_id=run_id,
+                                    user_id=other_user, idempotency_key="b" * 64,
+                                    recipient_alias=recipient_for(other_user),
+                                    template_version="potential-v1", delivery_mode="ses",
+                                    status="reserved"))
+        session.flush()
+        for match_id in session.scalars(select(Match.id).where(Match.user_id == other_user)):
+            session.add(NotificationMatch(notification_id=second_id, match_id=match_id))
+
+    def preflight(notification_id):
+        try:
+            compose(engine, notification_id, begin_send=True)
+            return "allowed"
+        except ValueError as error:
+            return str(error)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(preflight, (first_id, second_id)))
+    assert sorted(outcomes) == ["allowed", "ses_send_limit_reached"]
+    with session_scope(engine) as session:
+        assert session.scalar(select(func.sum(NotificationLog.attempt_count))) == 1
 
 
 def test_zero_matches_produce_no_notification(setup_data):
