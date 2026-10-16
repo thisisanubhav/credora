@@ -12,9 +12,11 @@ The supplied 10,000-row sample was parsed/persisted in a guarded local test data
 
 The isolated clean clone produced one real browser/LocalStack batch with 3 accepted synthetic users, 3 versioned potential matches, 2 mock-only notification records and terminal n8n B/C executions 34/35. Discovery execution 36 fetched SBI and Axis, both `review_required`; recrawl left one version each. See [clean-checkout evidence](submission-checklist.md), [screenshots](../artifacts/m10/real-ingestion-complete.png), and [prior QA evidence](final-test-evidence.md).
 
+After that baseline, one separately authorized, batch-scoped real SES test reached published n8n Workflow C execution **177** and its SES node exactly once. The node returned `Forbidden - perhaps check your credentials?`; no SES Message ID was returned, the notification is conservatively `ambiguous` with one attempt, and the owner reported **no inbox receipt**. Mock mode and zero-attempt settings were restored. This is **not** a successful SES demonstration; see [sanitized live evidence](aws-ses-live-evidence.md). No retry is authorized.
+
 ## Honest limitations
 
-- The budget is ₹0: no RDS, real S3/Lambda, AWS SES delivery, inbox receipt or live Gemini request. LocalStack/fixtures/mocks must not be represented as those services.
+- The budget is ₹0: no RDS, real S3/Lambda, AWS SES delivery, inbox receipt or live Gemini request. The one SES attempt was owner-authorized under owner-confirmed spending safeguards but failed; LocalStack/fixtures/mocks must not be represented as live AWS services.
 - Official bank eligibility remains incomplete, and sample income has no currency. Neither bank is automatically matched; synthetic fixtures are clearly separate.
 - The future AWS JWT API lacks a browser OIDC login, RDS certificate verification and privately hosted n8n. The local editor's Code signer is unsuitable for multi-user hosting.
 - The installed n8n SES node cannot send both HTML and plain-text alternatives in one `email.send` call. An actual received SES email—required by the PDF—has not been demonstrated.
