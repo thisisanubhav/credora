@@ -14,6 +14,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import delete, func, select, text
 
+from scripts.local_env import LOCAL, parse_env, validate
 from scripts.seed_matching_demo import SOURCE_ID, seed_synthetic
 from services.common.db import make_engine, session_scope
 from services.common.models import (
@@ -368,7 +369,12 @@ def test_previous_ambiguous_attempt_does_not_authorize_or_block_new_batch(setup_
 
 
 def test_ses_scope_rejects_multi_user_batch_and_other_notification(setup_data, monkeypatch):
-    engine, _, _, _ = setup_data
+    engine, batch_id, _, _ = setup_data
+    _isolate_single_demo_match(setup_data)
+    with session_scope(engine) as session:
+        session.add(User(id=uuid.uuid4(), upload_batch_id=batch_id, source_user_id="unmatched-demo",
+                         email="unmatched@example.invalid", monthly_income=Decimal(50000),
+                         credit_score=710, age=30, employment_status="salaried"))
     monkeypatch.setenv("NOTIFICATION_TRANSPORT", "ses")
     monkeypatch.setenv("NOTIFICATION_SES_ENABLED", "1")
     monkeypatch.setenv("NOTIFICATION_SES_MAX_ATTEMPTS", "1")
@@ -377,10 +383,27 @@ def test_ses_scope_rejects_multi_user_batch_and_other_notification(setup_data, m
     run_id = _start(setup_data)
     first_id = uuid.UUID(next_reservation(engine, run_id)["notification_id"])
     _authorize_ses(setup_data, first_id, monkeypatch)
-    with pytest.raises(ValueError, match="ses_demo_scope_not_single|ses_authorization_mismatch"):
+    with pytest.raises(ValueError, match="ses_demo_scope_not_single"):
         compose(engine, first_id, begin_send=True)
     with session_scope(engine) as session:
         assert session.get(NotificationLog, first_id).attempt_count == 0
+
+
+def test_local_config_requires_exact_ses_authorization():
+    values = parse_env(LOCAL)
+    values.update(NOTIFICATION_TRANSPORT="ses", NOTIFICATION_SES_ENABLED="1",
+                  NOTIFICATION_SES_MAX_ATTEMPTS="1",
+                  NOTIFICATION_TEST_EMAIL="controlled@verified.test",
+                  NOTIFICATION_FROM_EMAIL="controlled@verified.test")
+    values.pop("NOTIFICATION_SES_AUTHORIZED_BATCH_ID", None)
+    values.pop("NOTIFICATION_SES_AUTHORIZED_IDEMPOTENCY_KEY", None)
+    with pytest.raises(ValueError, match="authorized batch UUID"):
+        validate(values)
+    values["NOTIFICATION_SES_AUTHORIZED_BATCH_ID"] = str(uuid.uuid4())
+    with pytest.raises(ValueError, match="authorized notification key"):
+        validate(values)
+    values["NOTIFICATION_SES_AUTHORIZED_IDEMPOTENCY_KEY"] = "a" * 64
+    validate(values)
 
 
 def test_zero_matches_produce_no_notification(setup_data):
