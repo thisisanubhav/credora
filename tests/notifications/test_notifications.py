@@ -216,6 +216,39 @@ def test_interrupted_send_becomes_ambiguous_and_not_resent(setup_data):
         compose(engine, notification_id, begin_send=True)
 
 
+def test_stale_reserved_notification_reuses_reservation_without_sending(setup_data, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from services.eligibility.dispatcher import reconcile_stale
+
+    engine, batch_id, event_id, _ = setup_data
+    user_id = _isolate_single_demo_match(setup_data)
+    monkeypatch.setenv("NOTIFICATION_TRANSPORT", "ses")
+    monkeypatch.setenv("NOTIFICATION_SES_ENABLED", "1")
+    monkeypatch.setenv("NOTIFICATION_TEST_EMAIL", "owner+verified@gmail.com")
+    run_id = _start(setup_data)
+    notification_id = uuid.UUID(next_reservation(engine, run_id)["notification_id"])
+    assert accept_event(engine, event_id=event_id, batch_id=batch_id)["accepted"] is False
+    with session_scope(engine) as session:
+        run = session.get(WorkflowExecution, run_id)
+        run.metrics = {**run.metrics,
+                       "heartbeat_at": (datetime.now(UTC) - timedelta(minutes=20)).isoformat()}
+        session.get(OutboxEvent, event_id).status = "delivered"
+    assert reconcile_stale(engine) == 1
+    assert accept_event(engine, event_id=event_id, batch_id=batch_id)["accepted"] is True
+    resumed = next_reservation(engine, run_id)
+    assert resumed["notification_id"] == str(notification_id)
+    assert resumed["state"] == "reserved"
+    preview = compose(engine, notification_id, begin_send=False)
+    assert preview["recipient"] == "owner+verified@gmail.com"
+    assert preview["recipient"] != "csv-0@example.invalid"
+    with session_scope(engine) as session:
+        log = session.get(NotificationLog, notification_id)
+        assert (log.status, log.attempt_count, log.ses_message_id) == ("reserved", 0, None)
+        assert log.user_id == user_id
+        assert session.scalar(select(func.count()).select_from(NotificationLog)) == 1
+
+
 def test_ses_acceptance_and_uncertain_failure_are_distinct(setup_data, monkeypatch):
     engine, _, _, _ = setup_data
     _isolate_single_demo_match(setup_data)
