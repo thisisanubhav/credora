@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
+from hmac import compare_digest
 from typing import Any
 
 from sqlalchemy import func, select, text
@@ -151,17 +152,35 @@ def compose(engine: Engine, notification_id: uuid.UUID, *, begin_send: bool) -> 
         content = render(products, synthetic=all(p["source_type"] == "synthetic" for p in products))
         if begin_send:
             if log.delivery_mode == "ses":
-                # Serialize the one-off test gate across concurrent preflights.
-                # An ambiguous attempt consumes the allowance: it may have sent.
+                # The one-off authorization names a fresh demo batch and its
+                # deterministic notification key, never a previous reservation.
                 try:
                     limit = int(os.environ.get("NOTIFICATION_SES_MAX_ATTEMPTS", "0"))
                 except ValueError as error:
                     raise ValueError("ses_attempt_limit_invalid") from error
                 if limit != 1:
                     raise ValueError("ses_one_shot_not_enabled")
+                try:
+                    authorized_batch = uuid.UUID(os.environ.get("NOTIFICATION_SES_AUTHORIZED_BATCH_ID", ""))
+                except ValueError as error:
+                    raise ValueError("ses_authorization_unconfigured") from error
+                authorized_key = os.environ.get("NOTIFICATION_SES_AUTHORIZED_IDEMPOTENCY_KEY", "")
+                if not authorized_key:
+                    raise ValueError("ses_authorization_unconfigured")
+                expected_key = idempotency_key(batch.id, log.user_id)
+                if (not batch.is_demo or batch.id != authorized_batch or
+                        not compare_digest(authorized_key, expected_key) or
+                        not compare_digest(log.idempotency_key, expected_key) or
+                        len(products) != 1 or products[0]["source_type"] != "synthetic"):
+                    raise ValueError("ses_authorization_mismatch")
+                # Serialize concurrent preflights. An ambiguous attempt in
+                # this batch consumes its allowance; attempts in older batches
+                # remain immutable but do not consume a new authorization.
                 session.execute(text("SELECT pg_advisory_xact_lock(1799620601)"))
-                attempts = session.scalar(select(func.count()).select_from(NotificationLog).where(
-                    NotificationLog.delivery_mode == "ses", NotificationLog.attempt_count > 0))
+                attempts = session.scalar(select(func.count()).select_from(NotificationLog).join(
+                    User, NotificationLog.user_id == User.id).where(
+                    User.upload_batch_id == batch.id, NotificationLog.delivery_mode == "ses",
+                    NotificationLog.attempt_count > 0))
                 if attempts:
                     raise ValueError("ses_send_limit_reached")
             log.status = "sending"
