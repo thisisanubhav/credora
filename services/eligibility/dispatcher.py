@@ -58,6 +58,11 @@ def claim_due(engine: Engine, *, only_event_id: uuid.UUID | None = None) -> dict
         )
         if only_event_id is not None:
             query = query.where(OutboxEvent.event_id == only_event_id)
+        else:
+            # A manually released recovery is never eligible for the ordinary
+            # queue sweep, including after a failed targeted delivery retry.
+            query = query.where(OutboxEvent.payload["recovery_dispatch_scope"].astext.is_distinct_from(
+                "targeted_only"))
         event = session.scalar(query.order_by(
             OutboxEvent.next_attempt_at, OutboxEvent.event_id).with_for_update(skip_locked=True).limit(1))
         if event is None:
