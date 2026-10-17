@@ -1,5 +1,9 @@
 # Final assignment requirement-to-evidence matrix
 
+## Latest controlled attempt — 2026-10-17 09:34 UTC
+
+**FAIL for SES acceptance and receipt: the owner confirmed no email received.** The single authorized attempt on the patched n8n image reached Workflow C execution **181**. The SES node ran once and returned `Bad request - please check your parameters`, without a Message ID. Terminal workflow success reflects handled failure. Notification `514f933f-277e-43e3-88e1-2284519bd1dc` remains ambiguous, attempt count 1. There are now four ambiguous SES notifications; the previous three are unchanged. Mock mode is restored, SES disabled, maximum attempts 0, scoped authorization cleared, and no completion event remains pending. No retry is authorized. See [live evidence](aws-ses-live-evidence.md#patched-image-controlled-attempt--execution-181). Actual SES delivery remains incomplete; no submission readiness is claimed.
+
 Source: all four pages of the supplied assignment PDF, reviewed again 2026-10-15. The PDF permits local deployment and does not expect cloud spending, but **does** demand an AWS SES-node send and a received test email in a 5–10 minute video. A fresh, separately authorized attempt on 2026-10-17 reached Workflow C **179** and its SES node, which returned `Bad request - please check your parameters`; no SES Message ID was returned, and the owner confirmed no Inbox or Spam receipt. `PASS` means the stated local path actually executed; `PARTIAL` distinguishes implemented/offline/mock components from the requested live outcome. `BLOCKED_BY_ZERO_BUDGET` does not mean technically accepted by an evaluator. No self-awarded score is inferred from the PDF's 30/20/30/20 evaluation weights.
 
 | PDF requirement | Implemented component | Verification method and evidence location | Status | Remaining limitation / corrective action |

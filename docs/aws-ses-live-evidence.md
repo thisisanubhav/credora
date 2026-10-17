@@ -139,3 +139,33 @@ The missing `Version` is a confirmed local discrepancy with the [classic SES com
 The follow-up [request-contract audit](aws-ses-request-contract.md) established the documented AWS Query POST format using the AWS-authored Smithy protocol and installed Botocore SES model. The patch now supplies Action and Version in a form-encoded body, with Content-Type and Content-Length, and avoids JSON quoting in the SES helper. A network-disabled derived-image capture verified one recipient and independently verified SigV4 over the transmitted body and headers; body or Content-Type tampering invalidates the signature. This supersedes the earlier version-only patch and unresolved transport-format assessment. AWS tolerance of the original query-only POST and the exact rejection reason for execution 179 remain unverified.
 
 All 129 selected notification, recovery, matching/dispatcher, database integration and unit tests passed. Ruff, mypy, workflow JSON and Compose validation passed. The recovered test failure was reproduced by a one-second dispatcher-clock lag and repaired by explicitly making its fixture event due; production isolation is unchanged. The derived image was built locally but **not deployed**. The original n8n remains healthy, Workflow C is still version `87b22acd-4324-40bd-94f2-6564255589a6`, latest execution remains 179, and three SES records remain ambiguous with one attempt and no Message ID. Both configuration and running helper remain test/mock/SES-disabled/zero-attempt, with no dispatcher. No email, AWS call or new notification attempt occurred.
+
+### Authorized local patch deployment — 2026-10-17T09:18:20+00:00
+
+**PASS — local n8n image replacement completed; no email or workflow execution.** The retained original n8n 2.43.5 image was replaced locally with tested immutable image `sha256:3897004d6718a62a9d9e0d1e3656911690567e1f077e85fdc2dec6ce74caa04a`, now healthy. Verified database, volume and encryption-key/configuration backups were stored outside Git before replacement. The [local rollout record](aws-ses-request-contract.md#authorized-local-rollout) documents original/patched images, backup integrity, the persistent private Compose override and rollback instructions.
+
+Before/after fingerprints confirm preservation of encrypted credentials, workflow definitions/history and all 40 execution records. A final direct comparison of owner fields with the backup found only `updatedAt` changed during runtime; password, identity and all other fields are preserved. Workflow C remains published at `87b22acd-4324-40bd-94f2-6564255589a6`; credential binding/decryptability, region `eu-north-1`, HMAC/preflight, one recipient and disabled retries are preserved. Latest execution remains 179. Application records are unchanged; three SES notifications remain ambiguous with one attempt and no Message ID. Configuration and helper remain test/mock/SES-disabled/zero-attempt; dispatcher remains stopped.
+
+Installed patch and file hashes match the tested image. The network-disabled synthetic request capture validates the form body, API Version, recipient and SigV4 signature. Fresh post-rollout contract tests: **40 passed**. No AWS API call or new SES attempt was initiated. Real provider acceptance and inbox receipt remain NOT_VERIFIED. Rollback was not needed; the original image is retained. This rollout does not authorize sending or historical replay.
+
+
+## Patched-image controlled attempt — execution 181
+
+Date: 2026-10-17. Owner authorized exactly one attempt for replacement batch `6fd3d3f1-6520-4c7d-9dab-141b152ac814` and completion event `747daee0-0fdc-554f-ab0b-07db40af6519`.
+
+- Final preflight verified one accepted synthetic user, one synthetic potential match, event pending with retry count 0, no reservation, scoped authorization match, controlled recipient isolation, no unrelated pending completion, and unchanged historical records.
+- Published C version `87b22acd-4324-40bd-94f2-6564255589a6` retained one recipient, preflight expressions, HMAC, stored AWS credential in eu-north-1, and no automatic SES node retry.
+- Running image: `sha256:3897004d6718a62a9d9e0d1e3656911690567e1f077e85fdc2dec6ce74caa04a`.
+- A local control-script dictionary lookup error initially stopped execution before dispatch. Exception-safe cleanup restored mock mode. The error was corrected, the event and absent reservation rechecked, and authorization restored before the sole dispatch. This did not execute Workflow C or consume an SES attempt.
+- Scoped activation used test/SES/enabled/maximum attempts 1. Only the internal helper was refreshed with the canonical Compose project and saved image override; n8n was not recreated.
+- Exactly one event-specific dispatch returned `delivered`. Event is now delivered, retry count 1.
+- Workflow C execution **181** started `2026-10-17 09:34:14.175 UTC`, ended `09:34:15.263 UTC` (1.088 seconds), terminal status success; last node `Notification Execution Summary`.
+- Saved SES node evidence contains exactly one node run and one output: `error: "Bad request - please check your parameters"`. No Message ID, HTTP status, AWS error code, or request ID was retained. Do not infer provider acceptance from terminal workflow success.
+- Notification `514f933f-277e-43e3-88e1-2284519bd1dc`: ambiguous, attempt count 1, no SES Message ID, diagnostic code `ses_node_error_or_timeout`.
+- Mandatory rollback verified ignored `.env` and healthy helper in test/mock, SES disabled, maximum attempts 0, both scoped values cleared. No dispatcher or pending completion event remains.
+- Post-attempt fingerprints confirm previous notification records and recovery audits unchanged, published workflows unchanged, and exactly one new Workflow C execution. No second send or dispatch occurred.
+- Owner checked the controlled inbox and reported **No email received**. Actual SES acceptance/delivery requirement remains incomplete.
+
+The offline patch verification does not explain this live rejection. Its exact cause remains unverified because the saved node output omits provider diagnostic fields. Further investigation must be read-only/offline; no replay, attempt reset, or additional send is authorized.
+
+Fresh post-attempt checks: 85 notification tests passed (including offline SES contract, recipient isolation, HMAC, attempt-limit, idempotency, recovery, and published parameter checks); Ruff and Mypy passed (53 source files), and `git diff --check` passed. Tests did not invoke live SES.

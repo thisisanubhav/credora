@@ -1,5 +1,9 @@
 # Loan Eligibility Engine — private reviewer summary
 
+## Latest controlled attempt — 2026-10-17 09:34 UTC
+
+**FAIL for SES acceptance and receipt: the owner confirmed no email received.** The single authorized attempt on the patched n8n image reached Workflow C execution **181**. The SES node ran once and returned `Bad request - please check your parameters`, without a Message ID. Terminal workflow success reflects handled failure. Notification `514f933f-277e-43e3-88e1-2284519bd1dc` remains ambiguous, attempt count 1. There are now four ambiguous SES notifications; the previous three are unchanged. Mock mode is restored, SES disabled, maximum attempts 0, scoped authorization cleared, and no completion event remains pending. No retry is authorized. See [live evidence](aws-ses-live-evidence.md#patched-image-controlled-attempt--execution-181). Actual SES delivery remains incomplete; no submission readiness is claimed.
+
 Repository: <https://github.com/thisisanubhav/loan-eligibility-engine> (private). Verified published M10 baseline commit: `b189c16d7fc90b7dc98a3e6f6c3de47086732db5`; M9.1 ancestor: `fe09a9c`. The final M10 tip must be taken from the pushed branch (`git rev-parse HEAD` and `git ls-remote origin refs/heads/feat/m10-submission-readiness`) rather than hard-coded into its own commit. Video: **not recorded or linked**. Submission form: <https://docs.google.com/forms/d/e/1FAIpQLSe1ET4U8rOcPM3VGJ8fT5HhigTO9fKuDlsB_wHtB5acWys9XQ/viewform> (not submitted).
 
 ## Current local release state — 2026-10-17
