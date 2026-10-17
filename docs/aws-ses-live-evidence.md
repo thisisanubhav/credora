@@ -175,3 +175,38 @@ Fresh post-attempt checks: 85 notification tests passed (including offline SES c
 On 2026-10-17, after separate authorization and fresh verified backups, the retention-aware rollout succeeded. n8n now runs `sha256:7a6c3576b77f302b0ba1c13bb9de2ea2687487a52c5466a99dd6d248ff4586e2`. All seven current workflow history rows survived unchanged; no retention exception was needed. Published workflows, credentials, execution records and application records are preserved. The owner-record comparison allowed only its runtime `updatedAt` timestamp. See [diagnostic rollout evidence and current override](aws-ses-safe-diagnostics.md#authorized-retention-aware-retry--pass).
 
 The installed image retains only allowlisted status/code/request-ID diagnostics on a future handled SES failure. It cannot recover the missing AWS details from execution 181 and does not establish that SES sending is fixed. Latest C execution remains 181; four one-attempt ambiguous notifications remain unchanged. SES remains disabled in mock mode, scoped authorization is empty, and no dispatcher or pending completion event exists. No email or live workflow execution occurred during rollout. Another send requires separate explicit authorization and fresh isolated preparation.
+
+
+## Diagnostic-image single attempt — execution 183
+
+The owner explicitly authorized exactly one SES test email. The earlier pasted preparation referred to an already-consumed batch; it was not reused. The current fresh batch and event were identified before execution.
+
+| Evidence | Result |
+| --- | --- |
+| Date / region | 2026-10-17 / eu-north-1 |
+| Authorized fresh batch | `6b524d02-204b-4b0a-b0e2-6ad260adf4d9` |
+| Sole dispatched event | `cbe2a3c8-d458-5781-8384-d6e8949d67e1` |
+| n8n execution | `183`, terminal success with handled SES rejection |
+| Published C version | `87b22acd-4324-40bd-94f2-6564255589a6` |
+| Start / finish UTC | 09:58:41.104 / 09:58:42.254 (1.150 seconds) |
+| SES node runs | Exactly one |
+| Final node | Notification Execution Summary |
+| Saved generic error | SES request failed; inspect safe diagnostics |
+| HTTP status | **400**, captured diagnostic |
+| AWS error code | **MessageRejected**, captured diagnostic |
+| AWS request ID | `27ff80c4-8694-49f5-bdab-7356ef54d0cb` |
+| SES Message ID | None; request ID is not an acceptance Message ID |
+| Notification | `19afd6e5-68b6-429c-afcd-8dc036c24473` |
+| Notification status / attempts | ambiguous / 1 |
+| Application diagnostic | ses_node_error_or_timeout |
+| Outbox event status / claim count | delivered / 1 |
+| Pending completion events afterward | 0 |
+| Inbox receipt | NOT_VERIFIED, owner asked to inspect Inbox and Spam |
+
+Preflight verified a healthy canonical diagnostic image, the exact pending event at retry count zero, one synthetic user/match, no prior reservation, scoped key match, controlled identity isolation, unchanged historical notifications and published recipient/preflight/HMAC configuration. Only the helper was refreshed for temporary test/SES/enabled/one-attempt mode. Only the authorized event was dispatched once; no background dispatcher was started.
+
+Exception-safe cleanup restored ignored `.env` and healthy running helper to test/mock, SES disabled, maximum attempts 0, both scoped values cleared. The diagnostic n8n image was not replaced. Post-attempt fingerprints verified the previous four notification records, recovery audits and published workflows unchanged. Exactly one new Workflow C execution and one new notification attempt exist. No retry, attempt reset or replacement notification occurred.
+
+The diagnostic patch successfully preserved the status, provider error code and request ID. It deliberately did not save the provider's potentially sensitive message, so the specific reason within MessageRejected remains unverified. Do not claim that this code establishes an unverified identity, sandbox problem, IAM problem or request-serialization defect. No further AWS operation or send is authorized. Preserve this ambiguous record.
+
+Fresh post-attempt verification: **88 notification tests passed** with offline diagnostic/contract capture against the diagnostic image. Ruff and Mypy passed (54 source files); `git diff --check` passed. No live SES send was invoked by tests.

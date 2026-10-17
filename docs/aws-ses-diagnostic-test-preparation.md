@@ -35,3 +35,8 @@ Obtain explicit authorization for exactly one attempt for this batch and complet
 ## Fresh verification
 
 107 tests passed across notifications (including installed-image diagnostics/contract, HMAC, recipient isolation, recovery and idempotency), matching/dispatcher, and the synthetic CSV fixture. Ruff passed; Mypy passed for 54 source files; Compose validation with the current diagnostic-image override passed; `git diff --check` passed. Final post-test read-only checks reconfirmed all preservation assertions, the pending untouched event, no new reservation, correct scoped values, empty running-helper authorization and healthy local endpoints.
+
+
+## Consumed by separately authorized attempt
+
+This prepared event was dispatched once in Workflow C execution 183 on 2026-10-17 at 09:58 UTC. AWS returned HTTP 400 / MessageRejected; no SES Message ID exists. The resulting notification is ambiguous at one attempt. The event is delivered, authorization cleared and mock mode restored. **This batch/event is no longer available for a fresh attempt. Do not replay it.** See the latest live evidence.
