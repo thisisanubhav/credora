@@ -1,5 +1,11 @@
 # Loan Eligibility Engine — private reviewer summary
 
+## Latest SES outcome — PASS, execution 185 (2026-10-17 10:26 UTC)
+
+One separately authorized attempt was accepted by AWS SES in `eu-north-1`. The controlled Gmail recipient confirmed receipt with the synthetic product label and required disclaimer. Notification state is `sent`, attempt count **1**, with a persisted provider Message ID. Mock transport is restored, SES disabled, maximum attempts zero, scoped authorization cleared, and dispatcher stopped. Five historical ambiguous notifications are unchanged. See [successful delivery evidence](aws-ses-success-evidence.md).
+
+This supersedes historical failed-attempt summaries below. Live SES sending and owner-confirmed receipt are **PASS**; a received-email screenshot/video has not yet been supplied. Live Gemini use, evaluator access, demonstration video, and submission remain incomplete. The project is not fully submission-ready.
+
 ## Latest SES result — execution 183, 2026-10-17 09:58 UTC
 
 **FAIL for provider acceptance.** One separately authorized attempt on the diagnostic image returned HTTP **400**, AWS **MessageRejected**, request ID `27ff80c4-8694-49f5-bdab-7356ef54d0cb`, with no SES Message ID. Workflow success reflects a handled error. The notification is ambiguous at one attempt; four previous ambiguous records are unchanged. Mock mode is restored, SES disabled, scoped authorization cleared, dispatcher stopped, and no completion event is pending. The owner checked the controlled inbox and confirmed no email received. This supersedes earlier attempt summaries below. Actual SES delivery remains incomplete; no submission readiness is claimed. See [live evidence](aws-ses-live-evidence.md#diagnostic-image-single-attempt--execution-183).

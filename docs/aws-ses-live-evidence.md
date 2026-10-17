@@ -1,5 +1,11 @@
 # Controlled SES attempt — 2026-10-16
 
+## Latest SES outcome — PASS, execution 185 (2026-10-17 10:26 UTC)
+
+One separately authorized attempt was accepted by AWS SES in `eu-north-1`. The controlled Gmail recipient confirmed receipt with the synthetic product label and required disclaimer. Notification state is `sent`, attempt count **1**, with a persisted provider Message ID. Mock transport is restored, SES disabled, maximum attempts zero, scoped authorization cleared, and dispatcher stopped. Five historical ambiguous notifications are unchanged. See [successful delivery evidence](aws-ses-success-evidence.md).
+
+This supersedes historical failed-attempt summaries below. Live SES sending and owner-confirmed receipt are **PASS**; a received-email screenshot/video has not yet been supplied. Live Gemini use, evaluator access, demonstration video, and submission remain incomplete. The project is not fully submission-ready.
+
 Status: **PARTIAL**. The application reached the real n8n AWS SES node exactly once, but n8n rejected the node locally with `Node does not have any credentials set`. There is **no SES API response or SES Message ID**. The owner independently checked the controlled Inbox and Spam folder and reported **not received**. Do not present this as a delivered email or retry the ambiguous notification without separate authorization.
 
 ## Scope and procedure
