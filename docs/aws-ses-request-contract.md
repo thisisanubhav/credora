@@ -1,47 +1,91 @@
-# Offline AWS SES request-contract audit — 2026-10-17
+# Offline AWS SES request contract and rollout plan
 
-## Scope and evidence
+Audit updated 2026-10-17. Live n8n remains unchanged at 2.43.5. No SES request, workflow execution, dispatcher run, or live database write was performed. The derived image was built and exercised only in isolated containers with networking disabled.
 
-This audit used the populated SES worktree, the checked-in Workflow C export, read-only inspection of draft and published n8n workflow rows, and the installed `n8nio/n8n:2.43.5` image. No production workflow, notification, dispatcher, IAM setting, or running n8n installation was changed. The request harness runs a separate container with `--network none`, a read-only filesystem and repository mount, synthetic AWS credentials and `.test` addresses, and a mocked transport. It calls the installed SES node and AWS credential signer, then captures only sanitized request fields before any HTTP I/O.
+## Transport compatibility
 
-The installed SES node is `n8n-nodes-base/dist/nodes/Aws/SES/AwsSes.node.js` (type version 1, audited file SHA-256 `51febf78584d8a6414794ff61679e8ef3570d813fd233ade58a2134c2649a835`). The call path is `AwsSes.execute` → `Aws/SES/GenericFunctions.awsApiRequestSOAP` → `Aws/GenericFunctions.getAwsCredentials` → `this.helpers.requestWithAuthentication` → `credentials/Aws.credentials.js` → `credentials/common/aws/utils.js` (`awsGetSignInOptionsAndUpdateRequest`, `signOptions`, AWS Signature Version 4) → mocked HTTP transport. The actual network transport is never called in this audit. The helper selects `email.eu-north-1.amazonaws.com`, signs for service `ses` in `eu-north-1`, and passes the signed URL to transport.
+**Original query-only POST: UNVERIFIED as an AWS service acceptance behavior; DOCUMENTED_UNSUPPORTED as the normative AWS Query POST format.** This distinction matters: a service may tolerate a nonconforming request, but this audit makes no such acceptance claim. **Corrected form-body POST: DOCUMENTED_SUPPORTED.**
 
-## Captured final request
+The [AWS-authored Smithy AWS Query protocol](https://smithy.io/2.0/aws/protocols/aws-query-protocol.html#request-serialization) specifies POST to `/`, form-encoded input in the body, a form Content-Type, Content-Length, and body fields Action and Version. It specifies RFC 3986 encoding. Botocore's installed SES model independently identifies protocol `query`, API version `2010-12-01`, and operation `SendEmail`; its offline serializer produces the same decoded body parameters and Content-Type as the patched node. This establishes a supported transport contract without contacting SES. [SES common parameters](https://docs.aws.amazon.com/ses/latest/APIReference/CommonParameters.html) and the [classic API reference](https://docs.aws.amazon.com/ses/latest/APIReference/Welcome.html) confirm the required version.
 
-The original installed node produced this structure, using only synthetic values:
+The original request omitted Version, put all parameters in the URL query, and had no body or Content-Type. The prior version-only patch repaired only the first discrepancy. Its old test accepted a bodyless POST; that incomplete assertion has been replaced with the documented form transport checks. Execution 179's underlying AWS rejection remains NOT_VERIFIED because the saved output retained no provider code, message, request ID or raw request.
 
-| Field | Captured result | Assessment |
-|---|---|---|
-| Method / host / path | `POST https://email.eu-north-1.amazonaws.com/` | VALID endpoint and region |
-| Query `Action` | `SendEmail` | VALID |
-| Query `Version` | **absent** | **CONFIRMED_DEFECT** against the classic SES common parameters |
-| Query `Source` | one synthetic sender string, percent encoded | VALID shape; AWS identity acceptance NOT_VERIFIED |
-| Query `Destination.ToAddresses.member.1` | one synthetic controlled recipient string, percent encoded | VALID shape; no `.2`, CC, BCC or empty member |
-| Query `Message.Subject.Data` | one nonempty synthetic string | VALID shape |
-| Query `Message.Body.Html.Data` / `.Charset` | one nonempty synthetic HTML string / `UTF-8` | VALID shape |
-| Body / `Content-Type` | absent / absent; all action parameters in URL query | **POSSIBLE_DEFECT**: query-only POST acceptance by SES was not established offline |
-| Authentication | SigV4 `Authorization` header, redacted; captured scope ends `/eu-north-1/ses/aws4_request` | VALID local signing shape; AWS signature acceptance NOT_VERIFIED |
+## Exact implementation and minimal correction
 
-The installed node uses `encodeURIComponent` on the preflight fields; the capture confirmed percent-encoded special characters. Its `setParameter` numbers destinations from 1. The checked-in workflow and both current n8n draft and published version `87b22acd-4324-40bd-94f2-6564255589a6` have exactly one `toAddresses` entry, `={{ [$json.recipient] }}`, and no additional recipient fields. The installed expression engine evaluated this to one string. The node's `encodeURIComponent` coerces the resulting single-element array to that one string. A nested array is not serialized into an additional recipient in this specific configuration.
+Installed code is under `n8n-nodes-base/dist/`:
 
-[SES classic common parameters](https://docs.aws.amazon.com/ses/latest/APIReference/CommonParameters.html) mark `Action` and `Version` as required. [The classic SES API reference](https://docs.aws.amazon.com/ses/latest/APIReference/Welcome.html) identifies the version as `2010-12-01`; [SendEmail](https://docs.aws.amazon.com/ses/latest/APIReference/API_SendEmail.html) defines the source, destination and message fields. The published workflow's saved execution 179 contains only n8n's generic “Bad request - please check your parameters” error, with no provider error code, message, request ID or raw request. Therefore **missing `Version` is a confirmed local contract defect, but its responsibility for execution 179 remains unproven**. Query-only POST with no `Content-Type` differs from documented form-body POST examples for other AWS Query services; this audit did not find SES-specific proof that it is rejected, so it remains a possible defect rather than a confirmed one.
+- `nodes/Aws/SES/AwsSes.node.js`, type version 1: reads preflight sender/recipient/subject/HTML and constructs SendEmail parameters.
+- `nodes/Aws/SES/GenericFunctions.js`: obtains credentials and invokes `requestWithAuthentication`; formerly JSON-stringified every supplied body, including a string.
+- `nodes/Aws/GenericFunctions.js`: selects the configured AWS credential type.
+- `credentials/Aws.credentials.js` and `credentials/common/aws/utils.js`: select the regional endpoint, construct a Smithy HTTP request, set Content-Length, and sign with service `ses` and region `eu-north-1` before HTTP transport.
 
-## Minimal repair prepared offline
+`patches/n8n-2.43.5-aws-ses-version.patch` now changes exactly two files. SendEmail uses `/` and a form body with Action and Version, RFC 3986 escaping, and `application/x-www-form-urlencoded; charset=utf-8`. The SES helper passes through a string body only for that explicit form Content-Type; other request paths keep their existing serialization. This prevents a JSON-quoted form body. The patch does not change workflow expressions, credentials, preflight, HMAC, retry behavior, recovery or idempotency.
 
-The SES node has no supported `Version` configuration option. No compatible official fix was verified, and the live n8n instance was not upgraded. A one-line, version-pinned patch is prepared at `patches/n8n-2.43.5-aws-ses-version.patch`. It adds `Version=2010-12-01` only to the `SendEmail` query. The offline harness checks the installed file hash, applies the patch **in memory**, invokes the real node and signer, and captures the final request. The patched capture has exactly one controlled recipient and the required `Action` and `Version`; sender, subject, HTML, HMAC preflight, credential binding and notification idempotency are unchanged. This patch does not address the query-only POST uncertainty.
+`patches/apply-n8n-ses-patch.cjs` verifies n8n 2.43.5, both original file hashes, and every patch context before writing either file during an isolated image build. Original SHA-256 values:
 
-This is **not deployed**. A separate authorized rollout would require a backed-up, version-pinned custom image or upstream n8n fix, verification of the image file hash, workflow/credential/PostgreSQL compatibility, isolated smoke tests, planned n8n restart, published-version verification, and another offline capture of the deployed image before any separately authorized live send. Do not mutate the running container in place, upgrade n8n automatically, replay ambiguous notifications, or use this document as send authorization.
+- SES node: `51febf78584d8a6414794ff61679e8ef3570d813fd233ade58a2134c2649a835`
+- SES helper: `838a53da650c3f69e55c884f50a37c7ac558c84ce850f91b932412761b85c30e`
 
-## Negative and regression evidence
+`infrastructure/Dockerfile.n8n-ses` derives from the exact audited base image digest `sha256:4fc4c67bf5fb990201a71d94c7070abf8dd0619cb8af1d059877a447f3640392`. There is no n8n version upgrade or migration change. No compatible official upstream replacement was established by this audit.
 
-`tests/notifications/ses_offline_capture.cjs` captures the installed final request in a network-disabled container. `tests/notifications/test_ses_http_contract.py` asserts that the unpatched request lacks `Version` and the patched request has it. Its local gate rejects empty, multiple and extra-empty recipients; missing sender, subject and HTML; malformed sender; wrong region; missing version; malformed query encoding; unsupported parameters; and a recipient that differs from the controlled sender. It also fails if the checked-in export gains a recipient entry or CC/BCC fields. These tests do not make AWS calls or claim the installed node itself rejects every malformed value.
+## Captured corrected request
 
-The prior `tests/notifications/test_ses_contract.py` covers the current export and published parameter shape, installed n8n expression evaluation, Botocore's local shape validation, synthetic content and CSV-address isolation. Botocore type validation does not establish AWS account, identity or sandbox acceptance. Current fresh test results and any pre-existing test failure are recorded in the final audit report.
+The installed expression engine evaluates the checked-in workflow using synthetic data. The harness loads the actual patched node and helper, invokes the actual AWS credential signer, and replaces HTTP transport with capture. A second capture uses the files in the built derived image directly. Both run with `--network none`, a read-only filesystem and no production credentials or volumes.
 
-Fresh local results: SES contract tests **34 passed** with `.env` supplying only local test and n8n database configuration. The notification suite ran **77 passed, 1 failed**; `test_release_preserves_unrelated_event` repeatedly found `claim_due()` returned `None` for the synthetic test event, including when run alone. This is a separate recovery/dispatcher test failure and does not exercise SES request construction. The same suite with that one test deselected passed **77/77**. Ruff and mypy passed for both SES test files; workflow JSON parsing and `git diff --check` passed. A changed-file secret scan found no access-key pattern, private key, non-test email or apparent secret assignment. No full repository security scan or live provider validation was performed.
+```text
+POST https://email.eu-north-1.amazonaws.com/
+Content-Type: application/x-www-form-urlencoded; charset=utf-8
+Content-Length: exact UTF-8 byte length of the serialized body
+URL query: empty
+Body fields:
+  Action=SendEmail
+  Version=2010-12-01
+  Source=<synthetic controlled address>
+  Destination.ToAddresses.member.1=<same synthetic controlled address>
+  Message.Subject.Data=<nonempty synthetic subject>
+  Message.Body.Html.Data=<nonempty synthetic HTML>
+  Message.Body.Html.Charset=UTF-8
+```
 
-## Error diagnostics and remaining uncertainty
+There is exactly one recipient, no second/empty member, CC or BCC. Synthetic text includes ampersand, plus, non-ASCII and punctuation to check encoding. The capture omits authorization headers, signatures and secret key material. The installed signer signs Content-Type, Content-Length, Host and X-Amz-Date, and hashes the exact body. An independent Node crypto HMAC implementation reconstructs the canonical request and confirms the signature; body and Content-Type tampering both invalidate it. AWS-side signature/identity acceptance remains NOT_VERIFIED.
 
-`Aws/SES/GenericFunctions.awsApiRequest` wraps transport errors with `NodeApiError(..., {parseXml:true})`. `NodeApiError` maps HTTP 400 to the generic text seen in execution 179. With Workflow C's continue-on-error behavior, the SES node emits only `{error: error.message}`; it discards provider code, message, request ID, status and response metadata from the saved output. A future approved diagnostic change should retain only an allowlisted, redacted provider error code, HTTP status and request ID in application evidence; it must not log authorization headers, signatures, addresses, full bodies or credentials. No diagnostic change was made to the live workflow here.
+Draft and published Workflow C retain one `toAddresses` entry, `={{ [$json.recipient] }}`, with a bound AWS credential and no automatic retry. Last inspected active version is `87b22acd-4324-40bd-94f2-6564255589a6`. The derived image changes no workflow database row or credential format.
 
-**Readiness:** offline patch validation PASS; live SES request acceptance, Message ID and inbox receipt NOT_VERIFIED. Another live attempt requires separate authorization, a fresh batch, reviewed rollout and the existing one-attempt safety gate. The three historical ambiguous notifications remain excluded from any retry.
+## Recovery regression
+
+`test_release_preserves_unrelated_event` assumed its newly inserted event was immediately due. The model assigns `next_attempt_at` using PostgreSQL time, while `claim_due()` compares against Python host time. The historical failure did not retain clock measurements. Today the original test initially passed, but a controlled one-second dispatcher-clock lag reproduced the exact `None` result. A read-only query of the disposable fixture showed the ordinary event was pending, had no recovery scope, and was not yet due. No transaction visibility or scope-filter defect was observed.
+
+The fixture now explicitly creates a due event using the host clock minus one minute. A new deterministic boundary test proves a future ordinary event stays unclaimed, becomes claimable exactly at its due time, and a due targeted-recovery event stays excluded throughout. Production dispatcher and recovery code were not weakened or changed. Clock synchronization remains an operational requirement; the old failure's actual host/container skew cannot be reconstructed from saved evidence.
+
+## Safe build, rollout and rollback plan — rollout NOT RUN
+
+Build from an isolated context containing only the Dockerfile and the two patch files, never the whole worktree or `.env`. Use `docker build --network=none --pull=false` and retain the original image. The local derived tag is `loan-engine-n8n-ses:2.43.5-contract`. Before rollout, run the complete contract suite with `N8N_SES_PATCH_IMAGE` set to that tag; the harness's `installed` mode tests the built files rather than an in-memory patch. Record the resulting image ID and use that immutable ID in the rollout override.
+
+A separately authorized operator should follow this sequence from the canonical populated SES worktree:
+
+1. Confirm test/mock mode, SES disabled, zero attempts, no dispatcher, empty scoped SES authorizations, and no in-flight Workflow C. Record published workflow ID/version, encrypted credential bindings, execution count/latest ID, and three ambiguous notification states without exporting their contents. Prevent outbound AWS/Gemini traffic during restart verification.
+2. Create a private backup directory **outside all Git worktrees**, mode 0700, and check free disk space. Stop only canonical n8n for a consistent snapshot; do not stop PostgreSQL or delete any volume. Save the current image ID and Compose project/volume mapping.
+3. Dump the n8n PostgreSQL database with supported `pg_dump --format=custom`; in the canonical postgres container use its existing `POSTGRES_USER` and `N8N_DB_NAME` variables without echoing secrets. Redirect the dump to the private backup directory. Check `pg_restore --list`, checksum the artifact, and test restore in a disposable isolated database before proceeding. Preserve the existing database and role ownership.
+4. Archive the stopped n8n data volume through a read-only mount in a network-disabled helper container. Privately copy ignored `.env` and any local override into the backup directory, preserving the **same encryption key**. Encrypted credentials are in PostgreSQL and require that key; a database dump alone is insufficient. Protect backups with 0600 permissions and never commit them.
+5. Use a private Compose override containing only the n8n derived image ID and `EXECUTIONS_DATA_PRUNE: "false"` during verification so the historical evidence is not pruned. Keep the canonical project directory, `.env`, named volumes, database host/name/user and encryption key unchanged. The future service-only command is `docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml -f <private-override> up -d --no-deps n8n`. Do not run `down`, delete volumes, import workflows or recreate credentials.
+6. Check health, exact n8n version/image ID, credential decryptability and binding without testing the credential against AWS, region, current draft/published version, execution history, one recipient, no retry, and mock/disabled helper settings. Re-run the no-network capture against the deployed image ID. Confirm no new Workflow C execution or SES attempt occurred.
+7. If any check fails, keep sending disabled and replace only the override's image with the recorded original image ID, then recreate only n8n using the same service-only command and persistent volumes. This same-version patch performs no schema migration; routine rollback should not restore over the live database. If integrity checks reveal database damage, stop and use a separately reviewed restore procedure from the validated snapshot, preserving subsequent evidence.
+
+No backup, shutdown, restart, override activation or rollout from this procedure was performed during this task. The image build and offline capture do not authorize deployment or email sending.
+
+## Diagnostics and remaining uncertainty
+
+The SES helper wraps HTTP errors in NodeApiError. With continue-on-error enabled, the SES node saves only `{error: error.message}`, discarding useful provider details. A later approved diagnostic change should allowlist redacted HTTP status, AWS error code and request ID; it must not log bodies, addresses, credentials or authorization headers. This task does not change the live workflow's error handling.
+
+Owner-confirmed IAM positive/negative simulations remain owner evidence. Sandbox/identity status, account restrictions, provider acceptance and inbox delivery were not independently tested. All three ambiguous notifications must remain untouched. A fresh batch and separate authorization are required for any future send, after controlled rollout succeeds.
+
+## Fresh verification results
+
+- `N8N_SES_PATCH_IMAGE=loan-engine-n8n-ses:2.43.5-contract uv run --frozen --env-file .env pytest -q tests/notifications tests/matching tests/integration tests/unit`: **129 passed**, no skipped or deselected tests. Database integration includes guarded test-database migration round trips. Notification/recovery and matching suites cover HMAC, attempt limits, idempotency, isolation and dispatcher behavior with mocked transports.
+- The repaired recovery fixture separately passed under the same injected one-second clock lag that reproduced its earlier failure.
+- Full project Ruff: PASS. Project mypy: PASS (52 source files); changed Python tests: PASS. All workflow JSON files parse; Compose validation and `git diff --check`: PASS.
+- Changed-file secret scan: PASS across nine changed/new files, using credential patterns and private local secret/address values as non-printing comparison inputs. No environment file, backup, credential value or private address was added. This is a scoped release check, not a new full-history security audit.
+- Derived image build with network-disabled build steps: PASS. Image ID `sha256:3897004d6718a62a9d9e0d1e3656911690567e1f077e85fdc2dec6ce74caa04a`; actual installed-image capture, SDK serialization comparison and independent SigV4/tamper checks: PASS.
+- Live read-only postcheck: original n8n image remains healthy, active Workflow C version unchanged, latest execution still 179, three SES rows still ambiguous with one attempt and no provider ID. Both ignored configuration and running helper remain test/mock/disabled/zero-attempt; dispatcher process count is zero.
+
+**Controlled rollout readiness: PASS for the prepared artifact and plan, contingent on the plan's backup/restore checks and separate deployment authorization. Live rollout: NOT_RUN. SES acceptance and receipt: NOT_VERIFIED.**

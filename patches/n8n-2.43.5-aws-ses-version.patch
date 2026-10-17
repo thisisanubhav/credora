@@ -5,6 +5,18 @@
                              setParameter(params, 'Destination.CcAddresses.member', additionalFields.ccAddresses);
                          }
 -                        responseData = await GenericFunctions_1.awsApiRequestSOAP.call(this, 'email', 'POST', '/?Action=SendEmail&' + params.join('&'));
-+                        responseData = await GenericFunctions_1.awsApiRequestSOAP.call(this, 'email', 'POST', '/?Action=SendEmail&Version=2010-12-01&' + params.join('&'));
++                        responseData = await GenericFunctions_1.awsApiRequestSOAP.call(this, 'email', 'POST', '/', 'Action=SendEmail&Version=2010-12-01&' + params.join('&').replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase()), { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' });
                      }
                      if (operation === 'sendTemplate') {
+                         const toAddresses = this.getNodeParameter('toAddresses', i);
+--- a/dist/nodes/Aws/SES/GenericFunctions.js
++++ b/dist/nodes/Aws/SES/GenericFunctions.js
+@@ -19,7 +19,7 @@
+             path,
+         },
+         method,
+-        body: JSON.stringify(body),
++        body: headers?.['Content-Type'] === 'application/x-www-form-urlencoded; charset=utf-8' && typeof body === 'string' ? body : JSON.stringify(body),
+         url: '',
+         headers,
+         region: credentials?.region,

@@ -1,0 +1,6 @@
+# Build only; deploying this image requires a separate controlled rollout.
+FROM n8nio/n8n:2.43.5@sha256:4fc4c67bf5fb990201a71d94c7070abf8dd0619cb8af1d059877a447f3640392
+USER root
+COPY patches/apply-n8n-ses-patch.cjs patches/n8n-2.43.5-aws-ses-version.patch /opt/loan-ses-patch/
+RUN node /opt/loan-ses-patch/apply-n8n-ses-patch.cjs --apply
+USER node
