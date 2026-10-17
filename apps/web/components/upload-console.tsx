@@ -185,24 +185,46 @@ export function UploadConsole() {
   const currentStep = phase === "idle" || phase === "ready" || phase === "error" && !batchId ? 0
     : phase === "requesting" || phase === "uploading" ? 1 : 2;
 
-  return <main className="min-h-screen">
-    <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-5 sm:px-8">
-        <div className="flex items-center gap-3">
-          <div aria-hidden="true" className="grid size-10 place-items-center rounded-xl bg-teal-700 text-lg font-bold text-white">L</div>
-          <div><p className="text-sm font-semibold tracking-tight text-slate-900">Loan Eligibility Engine</p><p className="text-xs text-slate-500">CSV intake</p></div>
-        </div>
-        <span className="hidden rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-800 sm:inline">Local development</span>
-      </div>
+  return <main className="loan-page">
+    <header className="site-header">
+      <a href="#" className="wordmark" aria-label="Loan Engine home"><span className="brand-symbol" aria-hidden="true">✳</span> LOAN ENGINE</a>
+      <nav aria-label="Main navigation"><a href="#how-it-works">How it works</a><a href="#csv-guidance">Data guide</a><a className="nav-action" href="#workspace">Open workspace <span aria-hidden="true">↗</span></a></nav>
     </header>
 
-    <div className="mx-auto max-w-5xl px-5 pb-16 pt-10 sm:px-8 sm:pt-14">
-      <div className="mb-9 max-w-2xl">
-        <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Data intake · Step 01</p>
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">Upload applicant data</h1>
-        <p className="mt-4 text-base leading-7 text-slate-600">Choose a CSV to start validation. The file goes directly to object storage; this page shows the batch&apos;s real processing status and row-level feedback.</p>
-      </div>
+    <div className="editorial-shell">
+      <section className="editorial-hero" aria-labelledby="hero-title">
+        <div><p className="eyebrow">A clearer starting point</p><h1 id="hero-title">Better information.<br /><span>Better possibilities.</span></h1></div>
+        <p className="hero-description">Turn applicant data into a clearer picture of potential loan eligibility. Thoughtful matching starts with getting the details right.</p>
+      </section>
 
+      <section className="feature-banner" aria-labelledby="feature-title">
+        <div className="feature-copy"><p className="eyebrow">From data to direction</p><h2 id="feature-title">A little clarity.<br />A world of possibility.</h2><p>One CSV. A structured review.<br />Your next step, made simpler.</p><a href="#workspace" className="dark-link">Start with your data <span aria-hidden="true">↗</span></a></div>
+        <svg className="branch-art" viewBox="0 0 480 370" fill="none" aria-hidden="true">
+          <path d="M210 375C220 280 240 178 312 42M233 268C186 225 150 210 105 193M253 208C300 198 348 154 382 115M277 143C246 102 220 82 186 67" stroke="#373e2d" strokeWidth="3" />
+          <path d="M231 279C175 286 138 256 141 222C184 209 223 235 231 279Z" fill="#7b8763"/>
+          <path d="M242 245C285 268 333 239 334 201C295 188 254 209 242 245Z" fill="#b76b4e"/>
+          <path d="M259 195C214 198 185 161 195 130C233 128 261 157 259 195Z" fill="#515f46"/>
+          <path d="M279 143C320 161 360 135 359 101C320 95 286 113 279 143Z" fill="#9ca285"/>
+          <path d="M303 77C278 48 290 15 319 7C338 33 327 64 303 77Z" fill="#b76b4e"/>
+          <path d="M179 225C153 183 113 172 87 191C98 224 140 241 179 225Z" fill="#c4aa72"/>
+          <path d="M219 102C215 67 188 43 164 55C164 83 187 102 219 102Z" fill="#7b8763"/>
+          <path d="M346 156C349 118 376 94 403 102C404 135 375 157 346 156Z" fill="#d0a375"/>
+          <path d="M144 221L217 268M263 235L321 209M206 142L251 184M298 137L348 111M305 68L315 22" stroke="#eee9d8" strokeWidth="1.2"/>
+          <circle cx="365" cy="245" r="4" fill="#b76b4e"/><circle cx="144" cy="103" r="3" fill="#7b8763"/>
+          <path d="M351 55l5-9 5 9-5 9-5-9Z" fill="#444735"/>
+        </svg>
+        <span className="banner-caption">Built on details. Designed for possibilities.</span>
+      </section>
+
+      <section id="how-it-works" className="process-section" aria-labelledby="process-title">
+        <div className="section-heading"><h2 id="process-title">A simple path forward</h2><span>01 — 03</span></div>
+        <div className="process-grid">
+          {[ ["01", "Bring your data", "Start with a CSV of applicant profiles. One person per row, six essential fields.", "CSV intake"], ["02", "Make every row count", "Review validation feedback and see which records are ready for matching.", "Data validation"], ["03", "Explore the possibilities", "Validated profiles move on to eligibility matching. Potential matches are never guarantees.", "Eligibility review"] ].map(([number, title, description, label]) => <article key={number} className="process-card"><span className="card-number">{number}</span><h3>{title}</h3><p>{description}</p><div className="card-caption">{label}<span aria-hidden="true">↗</span></div></article>)}
+        </div>
+      </section>
+
+      <div id="workspace" className="workspace">
+      <div className="workspace-heading"><div><p className="eyebrow">Your workspace</p><h2>Upload applicant data</h2></div><p>Start with a CSV. Follow validation as it happens,<br className="desktop-break" /> then review the results in one place.</p></div>
       <ol aria-label="Upload stages" className="mb-8 grid grid-cols-3 gap-2 text-xs sm:gap-3 sm:text-sm">
         {["Choose CSV", "Transfer file", "Review results"].map((label, index) =>
           <li key={label} className={`rounded-lg border px-3 py-3 font-medium sm:px-4 ${index <= currentStep ? "border-teal-200 bg-teal-50 text-teal-900" : "border-slate-200 bg-white text-slate-500"}`}>
@@ -211,7 +233,7 @@ export function UploadConsole() {
       </ol>
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,1fr)]">
-        <section aria-labelledby="upload-title" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
+        <section aria-labelledby="upload-title" className="upload-panel rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
           <div className="mb-6 flex items-center justify-between gap-3">
             <div><h2 id="upload-title" className="text-lg font-semibold text-slate-900">CSV upload</h2><p className="mt-1 text-sm text-slate-500">Maximum {fileSize(MAX_BYTES)} · UTF-8 CSV</p></div>
             {file && <button type="button" onClick={reset} className="text-sm font-semibold text-teal-700 underline-offset-4 hover:underline">Start over</button>}
@@ -220,10 +242,10 @@ export function UploadConsole() {
           <div onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()}
                onDragLeave={(event) => { event.preventDefault(); setDragging(false); }}
                onDrop={(event) => { event.preventDefault(); setDragging(false); if (!active) choose(event.dataTransfer.files[0] ?? null); }}
-               className={`rounded-xl border-2 border-dashed px-5 py-11 text-center transition-colors ${dragging ? "border-teal-600 bg-teal-50" : "border-slate-300 bg-slate-50/60"}`}>
+               className={`drop-zone rounded-xl border-2 border-dashed px-5 py-11 text-center transition-colors ${dragging ? "border-teal-600 bg-teal-50" : "border-slate-300 bg-slate-50/60"}`}>
             <div aria-hidden="true" className="mx-auto mb-4 grid size-12 place-items-center rounded-xl bg-white text-2xl text-teal-700 shadow-sm">↑</div>
             <p className="font-semibold text-slate-900">Drag a CSV here, or choose a file</p>
-            <p className="mt-1 text-sm text-slate-500">No data is uploaded until you select Upload CSV.</p>
+            <p className="mt-1 text-sm text-slate-500">Your file stays on your device until you select Upload CSV.</p>
             <label htmlFor="csv-file" className="mt-5 inline-flex cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:border-teal-500 hover:text-teal-800">Browse files</label>
             <input ref={inputRef} id="csv-file" type="file" accept=".csv,text/csv" className="sr-only" disabled={active}
                    onChange={(event) => choose(event.target.files?.[0] ?? null)} aria-describedby="csv-guidance" />
@@ -303,7 +325,9 @@ export function UploadConsole() {
           </div>
         </div>}
       </section>}
-      <p className="mt-8 text-center text-xs text-slate-500">Potential loan matches are not guaranteed approvals. This upload page does not display eligibility decisions or send email.</p>
+      <p className="mt-8 text-center text-xs text-slate-500">These are potential matches, not guaranteed loan approvals.</p>
+      </div>
     </div>
+    <footer className="site-footer"><div><p className="footer-brand">LOAN ENGINE<span aria-hidden="true">✳</span></p><p>Clarity at every step.</p></div><div className="footer-links"><a href="#workspace">Upload data ↗</a><a href="#csv-guidance">CSV guide ↗</a><span>Built for informed decisions.</span></div></footer>
   </main>;
 }
