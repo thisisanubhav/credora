@@ -1,6 +1,6 @@
 # SES safe diagnostics — offline preparation
 
-Status: prepared for review; **NOT DEPLOYED**. No SES attempt is authorized by this work.
+Status: **DEPLOYED locally after the authorized retry below**. No SES attempt is authorized by this work. Earlier preparation and rollback sections are historical.
 
 ## Why this is needed
 
@@ -64,3 +64,34 @@ Fresh notification suite: **88 passed**. After adding an explicit one-request as
 ### Remaining gate
 
 Before another rollout, determine an appropriate history-retention/preservation approach. The three removed history rows remain in the verified backup. Do not blindly restore the whole n8n database over current state or modify history records without a reviewed recovery plan. The current saved original image override remains the safe runtime choice; do not use the diagnostic candidate override as a startup default yet. Further email attempts remain unauthorized.
+
+## Authorized retention-aware retry — PASS
+
+Date: 2026-10-17. The owner authorized retrying local deployment with verified archived retention removals permitted. No SES sending was authorized.
+
+**Current runtime image:** `sha256:7a6c3576b77f302b0ba1c13bb9de2ea2687487a52c5466a99dd6d248ff4586e2` (n8n 2.43.5, corrected SES transport plus safe diagnostics).
+
+Fresh backup and guard scripts are stored outside Git at `/Users/anubhav/.local/share/loan-engine-backups/n8n-ses-diagnostics-retry-20261017`. PostgreSQL backup was fully decoded without restoring it; the volume archive and encryption configuration were verified. The earlier backup containing the three removed old versions remains checksum-valid and untouched.
+
+The revised guard preclassifies only unnamed versions older than 24 hours that are not current, active, published, or pinned by an open review. A missing row is permissible only if its complete original row is present in the checksum-verified backup and every remaining row is byte-identical. Added or altered history rows and protected/unexpired removals fail the guard. Positive and negative guard tests passed. This does not disable or bypass licensed retention.
+
+For this retry **zero** of the seven history rows qualified for deletion. All seven survived unchanged, so no retention exception was used. Published A/B/C versions, encrypted credentials, execution data/history, encryption key, mounts, ports, environment and application records passed comparison. Owner fields matched the backup except the routine runtime `updatedAt` timestamp. Owner password/identity preservation was checked; no interactive login was performed.
+
+Only the n8n service was recreated. n8n, PostgreSQL, LocalStack and helper are healthy; editor, frontend and API return HTTP 200. Workflow C remains published at `87b22acd-4324-40bd-94f2-6564255589a6`, with one preflight recipient, stored AWS credential in eu-north-1, HMAC and disabled node retry. Latest C execution is still 181. Four ambiguous notifications remain at one attempt with no provider Message ID. No completion event is pending, no dispatcher is running, and scoped authorization is empty. Test/mock/SES-disabled/zero-attempt settings are preserved.
+
+Live SES node/helper file hashes match the immutable diagnostic image. Offline installed-image capture verifies Action, Version, form body, one recipient and SigV4/tamper checks. Pre-rollout installed-image contract/diagnostic checks: **43 passed**. No live SES node was invoked.
+
+### Canonical startup override
+
+Use the retry directory's `image-override.yml` for future n8n operations. Older rollout overrides select the transport-only image and must not be used as the current diagnostic-image configuration. From the canonical worktree:
+
+```sh
+docker compose -p loan-eligibility-engine --project-directory . --env-file .env \
+  -f infrastructure/docker-compose.yml \
+  -f /Users/anubhav/.local/share/loan-engine-backups/n8n-ses-diagnostics-retry-20261017/image-override.yml \
+  up -d --no-deps --pull never n8n
+```
+
+Rollback remains available through `rollback-override.yml` in the same directory, selecting retained image `sha256:3897004d6718a62a9d9e0d1e3656911690567e1f077e85fdc2dec6ce74caa04a` with the same volumes. A database restore is not part of normal image rollback. Do not replay any ambiguous event.
+
+Post-rollout notification regression: **88 passed**, using the installed diagnostic image for both SES contract and diagnostic cases. Preservation checks were repeated after the suite and passed. No live workflow or SES send was triggered by tests.

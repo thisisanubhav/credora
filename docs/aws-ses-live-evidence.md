@@ -169,3 +169,9 @@ Date: 2026-10-17. Owner authorized exactly one attempt for replacement batch `6f
 The offline patch verification does not explain this live rejection. Its exact cause remains unverified because the saved node output omits provider diagnostic fields. Further investigation must be read-only/offline; no replay, attempt reset, or additional send is authorized.
 
 Fresh post-attempt checks: 85 notification tests passed (including offline SES contract, recipient isolation, HMAC, attempt-limit, idempotency, recovery, and published parameter checks); Ruff and Mypy passed (53 source files), and `git diff --check` passed. Tests did not invoke live SES.
+
+## Diagnostic image successfully deployed locally — no send
+
+On 2026-10-17, after separate authorization and fresh verified backups, the retention-aware rollout succeeded. n8n now runs `sha256:7a6c3576b77f302b0ba1c13bb9de2ea2687487a52c5466a99dd6d248ff4586e2`. All seven current workflow history rows survived unchanged; no retention exception was needed. Published workflows, credentials, execution records and application records are preserved. The owner-record comparison allowed only its runtime `updatedAt` timestamp. See [diagnostic rollout evidence and current override](aws-ses-safe-diagnostics.md#authorized-retention-aware-retry--pass).
+
+The installed image retains only allowlisted status/code/request-ID diagnostics on a future handled SES failure. It cannot recover the missing AWS details from execution 181 and does not establish that SES sending is fixed. Latest C execution remains 181; four one-attempt ambiguous notifications remain unchanged. SES remains disabled in mock mode, scoped authorization is empty, and no dispatcher or pending completion event exists. No email or live workflow execution occurred during rollout. Another send requires separate explicit authorization and fresh isolated preparation.
