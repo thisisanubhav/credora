@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Loan Eligibility Engine · Upload",
+  title: "Credora · Loan Eligibility",
   description: "Upload a CSV and follow its validation progress in the local environment.",
 };
 
