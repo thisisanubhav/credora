@@ -2,7 +2,7 @@
 
 ## Gemini update — 2026-10-17
 
-**PASS for actual LLM API usage:** one corrected synthetic extraction request returned HTTP 200 and token usage. The adapter schema/evidence checks passed; downstream harness validation failed on a locally reproduced fixture hash defect. Full n8n Gemini integration and persistence remain PARTIAL. See [evidence and limitations](gemini-live-evidence.md). This supersedes older statements that no live Gemini API use occurred.
+**PASS for actual LLM API usage and application validation:** a fresh corrected synthetic request returned HTTP 200, two evidence-backed clauses and passed full candidate/application validation. The earlier fixture hash failure is resolved. This evidence comes from an isolated direct harness; a new live Gemini-enabled n8n execution and persistence are not claimed. See [evidence and limitations](gemini-live-evidence.md). This supersedes older statements that no live Gemini API use occurred.
 
 ## Latest SES outcome — PASS, execution 185 (2026-10-17 10:26 UTC)
 
