@@ -2,6 +2,17 @@
 
 The PDF permits local deployment and says cloud spend is not expected. This submission honors the stricter ₹0/no-real-email instruction: the AWS template is offline-only and the SES receipt requirement remains unmet. **Do not submit the form automatically.**
 
+## Current environment and release gate — 2026-10-17
+
+Use the populated `feat/aws-ses-final-test-preparation` worktree and Compose project `loan-eligibility-engine` for current local work. The [reconciliation runbook](environment-reconciliation.md) lists paths, ports, safe startup/shutdown, backups, and preserved SES recovery records. [Release verification](release-verification.md) lists fresh tests and security findings. The earlier M10 clean-checkout rehearsal below is historical evidence, not the current canonical runtime.
+
+- [x] Preserve the populated PostgreSQL, n8n, LocalStack, and ignored configuration in private local backups outside Git; verify checksums and archives.
+- [x] Route the current API/frontend/ingestion worker to the populated stack, with mock transport and the notification dispatcher stopped.
+- [x] Run isolated backend, frontend, offline infrastructure, lint/type/build and dependency checks; record the five high-severity development-tooling advisories.
+- [ ] Independently verify the pushed SES branch tip, private visibility, and expected files before claiming publication.
+- [ ] Resolve effective SES authorization and capture an actually received test email under separate authorization; do not retry ambiguous records.
+- [ ] Complete live Gemini use, evaluator access, demonstration video, and submission form if the assignment requirements are to be fully met.
+
 ## Clean checkout rehearsal, executed 2026-10-15
 
 An isolated `git clone --no-hardlinks` of the M10 committed branch was created at a temporary path with **no copied `.env`, `.venv`, `node_modules`, or Docker volumes**. New `make init` keys and a separate Compose project (`COMPOSE_PROJECT_NAME=loan-engine-m10-fresh`) were used. The old project was stopped without deleting its volumes. On a machine where another checkout is running, use a unique Compose project and free host ports; the environment checker currently expects the documented loopback URLs.

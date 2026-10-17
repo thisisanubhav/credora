@@ -2,7 +2,9 @@
 
 An event-driven, local-first demonstration that ingests CSV batches, discovers personal-loan products, evaluates *potential* eligibility, and prepares test notifications through self-hosted n8n. It does not approve loans.
 
-> **Submission boundary:** ₹0 budget. LocalStack is not AWS S3, local PostgreSQL is not RDS, and a mock notification is not a received SES email. No AWS resources were provisioned and no real email or Gemini request was sent. Bank products remain review-required; positive demonstration matches use unmistakably synthetic products only.
+> **Submission boundary:** ₹0 budget. LocalStack is not AWS S3, local PostgreSQL is not RDS, and a mock notification is not a received SES email. A restricted AWS SES test identity and IAM user exist, but the one controlled live SES node attempt returned `Forbidden`; there is no provider Message ID or confirmed inbox receipt. No Gemini request succeeded. Bank products remain review-required; positive demonstration matches use unmistakably synthetic products only.
+
+**Current local development environment:** use the populated SES worktree and Compose project described in [environment reconciliation](docs/environment-reconciliation.md). Its API is <http://127.0.0.1:8000>, frontend is <http://127.0.0.1:3107>, n8n is <http://127.0.0.1:5678>, PostgreSQL is on port 5432, and LocalStack is on port 4566. Keep notification transport in mock mode, SES disabled, and the outbox dispatcher stopped. [Release verification](docs/release-verification.md) records the latest isolated checks.
 
 ## Quick start — local, no cloud account
 
@@ -21,7 +23,7 @@ docker compose --project-directory . --env-file .env -f infrastructure/docker-co
 docker compose --project-directory . --env-file .env -f infrastructure/docker-compose.yml restart n8n
 ```
 
-Open the n8n editor at <http://localhost:5678> (complete its local owner setup if prompted). Open three more terminals for `make api`, `make local-worker`, and `make web-dev`; use <http://127.0.0.1:3107>. For the complete local matching/notification path, start `uv run --frozen --env-file .env python -m services.eligibility.dispatcher --watch` in another terminal and seed *only* the labelled synthetic fixtures with `uv run --frozen --env-file .env python -m scripts.seed_matching_demo` and `uv run --frozen --env-file .env python -m scripts.seed_notification_demo`. The UI's synthetic demo checkbox additionally requires `NEXT_PUBLIC_ENABLE_DEMO_UPLOAD=1` for `make web-dev`. Without it, uploaded users will not automatically match the incomplete bank criteria. Run `make notification-e2e` for a headless, real-local-boundary smoke test after B/C are published. The mock branch records notifications but sends nothing. If Docker restarts, rerun `make up s3-init` before browser upload; this was necessary in the clean-clone validation.
+Open the n8n editor at <http://localhost:5678> (complete its local owner setup if prompted). Open three more terminals for `make api`, `make local-worker`, and `make web-dev`; use <http://127.0.0.1:3107>. The dispatcher remains stopped in the preserved SES development environment. A fresh clone with no historical recovery records may use the synthetic demo commands in the [demonstration guide](docs/final-demo-script.md), but do not replay the preserved SES events. The UI's synthetic demo checkbox additionally requires `NEXT_PUBLIC_ENABLE_DEMO_UPLOAD=1` for `make web-dev`. Without it, uploaded users will not automatically match the incomplete bank criteria. The mock branch records notifications but sends nothing. If Docker restarts, rerun `make up s3-init` before browser upload; this was necessary in the clean-clone validation.
 
 See [fresh-checkout and demonstration steps](docs/submission-checklist.md) and the [final architecture diagrams](docs/final-architecture.md). Never copy an existing `.env` into a new checkout; `make init` generates local-only keys. All editor, API, S3-emulator, and database ports bind to loopback.
 
@@ -32,7 +34,7 @@ See [fresh-checkout and demonstration steps](docs/submission-checklist.md) and t
 | Bulk upload | Browser → presigned LocalStack POST → Python ingestion → PostgreSQL | AWS S3/Lambda/RDS not run |
 | Discovery | Scheduled n8n Workflow A crawls official SBI and Axis pages | Both products remain review-required; Gemini not called |
 | Matching | n8n Workflow B uses SQL candidate reduction and deterministic rules | Positive results use isolated synthetic fixtures |
-| Notifications | n8n Workflow C groups potential matches, guards recipients, includes an AWS SES node | Only mock transport exercised; no inbox receipt |
+| Notifications | n8n Workflow C groups potential matches, guards recipients, includes an AWS SES node | Mock transport and one failed controlled SES attempt; no accepted send or inbox receipt |
 
 The assignment's 5–10 minute video and received SES email have **not** been produced. See [submission summary](docs/submission-summary.md) for honest compliance status and manual submission steps.
 
@@ -51,7 +53,7 @@ flowchart LR
     B --> OUT
     OUT --> C[n8n Workflow C: notifications]
     C --> MOCK[Local mock; no email]
-    C -.-> SES[AWS SES node; not exercised]
+    C -.-> SES[AWS SES node; controlled attempt rejected]
     A[n8n Workflow A: scheduled discovery] --> BANK[Official SBI and Axis pages]
     A --> DB
 ```
@@ -81,7 +83,7 @@ The local API is unauthenticated and loopback-only. The *future* AWS HTTP API te
 3. The Lambda validates the CSV and atomically persists an upload batch and its users in PostgreSQL.
 4. The outbox dispatcher invokes an authenticated n8n matching webhook with the committed batch identifier.
 5. n8n runs set-based SQL pre-filtering, deterministic rules, and only then any necessary bounded LLM checks.
-6. Qualified *potential* matches are persisted idempotently; Workflow C groups new matches by user. The local branch records mock-only notifications. A guarded AWS SES node exists but has not sent a real email.
+6. Qualified *potential* matches are persisted idempotently; Workflow C groups new matches by user. The default local branch records mock notifications. One separately controlled SES attempt was rejected and has not produced a confirmed email.
 7. Separately, a scheduled n8n workflow discovers products from an allowlist of public sources, extracts source-grounded criteria with Gemini Flash where useful, validates the JSON deterministically, and upserts versioned products.
 
 See the [architecture](docs/architecture.md) for diagrams and failure handling.
