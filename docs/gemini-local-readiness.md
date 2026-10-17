@@ -1,6 +1,6 @@
 # Gemini local readiness — 2026-10-17
 
-Latest live validation: the corrected adapter received HTTP 200 from Gemini with reported token usage. Actual LLM API use is verified. Full candidate validation encountered a locally reproduced synthetic fixture hash defect; successful n8n Gemini-stage execution and database persistence remain unverified. See [live evidence](gemini-live-evidence.md). The checks below describe the earlier readiness task.
+Latest live validation: **PASS**. The corrected adapter returned HTTP 200 and two evidence-backed clauses; full candidate and application validation passed with the corrected synthetic fixture. This was a direct isolated harness invocation, not a new n8n Workflow A execution. See [live evidence](gemini-live-evidence.md). The checks below describe the earlier readiness task.
 
 ## PASS: local configuration and offline checks
 
