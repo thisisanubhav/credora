@@ -1,5 +1,7 @@
 # Gemini local readiness — 2026-10-17
 
+Latest live validation: one request returned HTTP 400 because of an incorrect REST MIME enum. Both adapters are corrected and 38 offline tests pass; a successful live response remains unverified. See [live evidence](gemini-live-evidence.md). The configuration checks below describe the earlier readiness task.
+
 ## PASS: local configuration and offline checks
 
 The key supplied in the older restart workspace was copied into the canonical ignored `.env` without exposing it. Only the Gemini key field was transferred; other configuration was preserved. Secrets remain untracked.
