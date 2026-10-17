@@ -1,0 +1,38 @@
+# AWS SES IAM verification — 2026-10-17
+
+**Verdict: NOT_VERIFIED for effective `ses:SendEmail` permission.** The published n8n credential authenticates to AWS as the intended IAM user, but that restricted user cannot read its IAM policy or run the IAM Policy Simulator. Neither an `allowed` decision nor a negative-test `denied` decision was obtained. No email was sent, and the prior `Forbidden` root cause remains unproven.
+
+This was a read-only investigation. Credential values were handled in memory and were not printed, saved in this document, or committed. AWS account and email identifiers below are intentionally redacted. No IAM configuration, n8n workflow, database record, or notification mode was changed.
+
+| Check | Status | Evidence and limit |
+|---|---|---|
+| IAM principal | PASS | A read-only STS identity query using the **published SES node's stored credential** returned an ARN ending in `user/loan-eligibility-ses`. The account ID was present but is redacted here. This confirms the credential's IAM principal, not its sending permission. |
+| User details and permissions boundary | NOT_VERIFIED | `iam:GetUser` returned `AccessDenied`. A permissions boundary, if any, could not be inspected. |
+| Customer-managed policy attachment | NOT_VERIFIED | `iam:ListAttachedUserPolicies` and `iam:ListUserPolicies` returned `AccessDenied`. The reported attachment of `LoanEligibilitySESTestOnly` cannot be independently checked with this credential. |
+| Policy version and JSON | NOT_VERIFIED | `iam:GetPolicy` returned `AccessDenied`; the default version and its document were unavailable. Syntax, `ses:SendEmail` action, optional `ses:SendRawEmail` action, explicit denies, corrected placeholder conditions, and attachment cannot be established from local evidence. |
+| SES identity resource ARN | NOT_VERIFIED | The expected shape is `arn:aws:ses:eu-north-1:<ACCOUNT_ID>:identity/<VERIFIED_IDENTITY>`. The actual policy resource and the verified identity's AWS-side ARN were not available for comparison. The STS account ID alone does not prove the policy account or identity matches. |
+| Sender and recipient policy conditions | NOT_VERIFIED | The actual `ses:FromAddress` and `ses:Recipients` condition operators and values were unreadable. Current ignored local configuration has a non-placeholder sender and controlled recipient that are equal; this does not prove either condition matches the attached policy. |
+| Positive `ses:SendEmail` simulation | NOT_VERIFIED | A simulation was attempted for the intended user, an identity ARN constructed from the observed account, `eu-north-1`, and current sender, with `ses:FromAddress` and `ses:Recipients` context. `iam:SimulatePrincipalPolicy` returned `AccessDenied` before evaluating the action. |
+| Unauthorized-recipient simulation | NOT_VERIFIED | A second simulation changed only the recipient to a reserved unauthorized address. It also returned `AccessDenied` before evaluation. This is **not** an IAM `denied` decision for sending. |
+| `ses:SendRawEmail` simulation | NOT_RUN | Published n8n `awsSes` node uses `email/send`, which maps to `SendEmail`; no evidence shows `SendRawEmail` is needed. |
+| Other account restrictions | NOT_VERIFIED | An explicit deny, organization policy, session policy, SES account restriction, or identity verification state could not be independently inspected with the available IAM permissions. |
+
+## Published n8n alignment
+
+Workflow C `loanNotificationsM6` is published at active version `ca115f84-8244-4d83-9739-d830a00f09da`. Its SES node has an AWS credential binding. The credential's stored region is **`eu-north-1`**, with nonempty access-key fields and no stored endpoint or role-assumption override. The published node is `n8n-nodes-base.awsSes`, `resource=email`, `operation=send`. Its sender is `={{ $json.sender }}` and recipient is `={{ [$json.recipient] }}`. The node has no retry-on-failure setting, no additional recipient fields, and no node endpoint override. The version-controlled workflow export omits the local credential binding by design.
+
+The application helper derives SES recipients from the configured controlled test address, not applicant CSV addresses. For SES it uses that address exactly, without Gmail plus-alias rewriting. Its preflight also requires an explicitly authorized fresh demonstration batch and deterministic notification key, exactly one user and synthetic potential match, and one attempt. The current sender and recipient configuration values are equal and non-placeholder; the saved execution does not prove the final AWS request context or the policy's actual condition values.
+
+## Previous `Forbidden` result
+
+Saved n8n execution **177** belongs to the same published Workflow C version. The SES node's sanitized output contains `Forbidden - perhaps check your credentials?`. No SES Message ID, provider acceptance response, AWS error code, request ID, HTTP status, or resolved endpoint hostname is retained. n8n marked the overall execution `success` because the workflow continued after the node error. This is not evidence of an accepted send or inbox receipt.
+
+**Root cause: NOT_VERIFIED.** The earlier `YOUR_VERIFIED_EMAIL` placeholder issue is a plausible explanation for an IAM condition mismatch, and its correction has been reported, but the live policy document and effective decision are unavailable. A wrong identity ARN, account, condition value, missing `ses:SendEmail` allow, override deny, boundary or organization restriction, invalid signing credential, or SES account/identity restriction cannot be distinguished from the saved generic error. The new STS result confirms the stored credential currently authenticates as the intended IAM user; it does not reconstruct the exact credentials or AWS-side decision at execution 177.
+
+## Safety state at IAM verification and future verification
+
+At this IAM verification snapshot, ignored local configuration **and** the running helper both showed `NOTIFICATION_MODE=test`, `NOTIFICATION_TRANSPORT=mock`, `NOTIFICATION_SES_ENABLED=0`, and `NOTIFICATION_SES_MAX_ATTEMPTS=0`; scoped SES authorization values were empty. The notification dispatcher was stopped. PostgreSQL had no pending completion event. Both historical SES notification rows remained `ambiguous`, with one attempt each and no Message ID. Workflow C's latest execution was **177**. No new SES attempt or workflow execution occurred during that investigation. A fresh batch was prepared later; its current scoped authorization and pending event are recorded in [fresh test preparation](aws-ses-fresh-test-preparation.md).
+
+An authorized IAM console operator must inspect the user's attached policy and default version, compare the redacted identity ARN/account/region and exact sender/recipient conditions, and run an authorized-recipient **allowed** and unauthorized-recipient **denied** simulation. The restricted n8n IAM user lacks the read/simulation permissions to do this itself; do not expand its sending policy merely to diagnose it. Even a simulator `allowed` result would not prove SES accepted an email or that an inbox received one. A future controlled send is required only for that separate live-delivery evidence, using a fresh batch and separate authorization; never retry either ambiguous notification.
+
+AWS references: [SES IAM action/resource/condition model](https://docs.aws.amazon.com/ses/latest/dg/control-user-access.html), [IAM principal-policy simulation and context entries](https://docs.aws.amazon.com/IAM/latest/APIReference/API_SimulatePrincipalPolicy.html), and [permissions required for the simulator](https://docs.aws.amazon.com/IAM/latest/UserGuide/permissions-required_policy-simulator.html).

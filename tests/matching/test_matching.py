@@ -230,7 +230,12 @@ def test_signed_event_replay_window(monkeypatch):
 
 
 def test_dispatcher_retries_and_concurrent_claim(seeded, monkeypatch):
+    from datetime import timedelta
+
     _, event_id = batch_with_event(seeded)
+    with session_scope(seeded) as session:
+        event = session.get(OutboxEvent, event_id)
+        event.next_attempt_at = event.created_at - timedelta(seconds=1)
     with ThreadPoolExecutor(max_workers=2) as pool:
         claims = list(pool.map(lambda _: claim_due(seeded), range(2)))
     assert sum(claim is not None for claim in claims) == 1
@@ -240,7 +245,7 @@ def test_dispatcher_retries_and_concurrent_claim(seeded, monkeypatch):
     with session_scope(seeded) as session:
         event = session.get(OutboxEvent, event_id)
         assert event.status == "pending" and event.retry_count == 1
-        event.next_attempt_at = event.created_at
+        event.next_attempt_at = event.created_at - timedelta(seconds=1)
     monkeypatch.setenv("MATCHING_WEBHOOK_URL", "http://127.0.0.1:5678/webhook/loan-matching")
     client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(202, json={
         "run_id": str(uuid.uuid4()), "batch_id": json.loads(request.content)["batch_id"],
