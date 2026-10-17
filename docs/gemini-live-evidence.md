@@ -1,5 +1,21 @@
 # Gemini live validation — 2026-10-17
 
+## Latest complete validation — PASS, 11:03 UTC
+
+On 2026-10-17 at 11:03:09 UTC, the owner separately authorized validation with the corrected synthetic fixture. Exactly **one** Gemini request returned **HTTP 200** from `gemini-3.8-flash`. The adapter returned `used`, strict schema and source-evidence validation passed, and the application's discovery `validate` stage returned `validated`.
+
+- Prompt tokens: **96**; candidate tokens: **106**; thought tokens: **459**; total: **661**.
+- Two clauses returned: “Applicants must provide proof of stable employment.” and “Final eligibility is subject to verification of submitted documents.”
+- Both are exact quotations from the explicitly synthetic source. No real financial criteria or personal data were transmitted.
+- Product status remains `review_required`; no loan eligibility is invented or promoted.
+- Full text-plus-newline-plus-rate evidence hash passed. The preceding harness failure below is historical and resolved for this request.
+- Transport guard allowed one request only, with no network retries or redirects.
+
+This verifies the **live adapter plus application validation path**, invoked directly in an isolated harness. It is not a new n8n Workflow A execution, live website crawl or database persistence demonstration. No synthetic product was written into official product records. The sanitized response and usage are retained in a private local ledger outside Git. No email was sent.
+
+The assignment's actual LLM-use requirement now has successful live and application-validation evidence. The demonstration video should explain this scope alongside the separately verified n8n orchestration. Existing scheduled Workflow A can use the corrected helper; no additional manual workflow execution was requested here.
+
+
 ## Latest attempt — HTTP 200; full harness validation PARTIAL
 
 On 2026-10-17 at 11:01:23 UTC, a separately authorized single request used the corrected `APPLICATION_JSON` enum and model `gemini-3.8-flash`. Provider response: **HTTP 200**, model version `gemini-3.8-flash`; usage: **96 prompt tokens, 106 candidate tokens, 377 thought tokens, 579 total tokens**. Exactly one request occurred, with synthetic qualitative text only and a transport guard blocking any second request. No workflow, database write, SES send or helper restart was performed.
