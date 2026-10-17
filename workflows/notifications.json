@@ -455,7 +455,7 @@
         "resource": "email",
         "operation": "send",
         "fromEmail": "={{ $json.sender }}",
-        "toAddresses": "={{ [$json.recipient] }}",
+        "toAddresses": ["={{ [$json.recipient] }}"],
         "subject": "={{ $json.subject }}",
         "body": "={{ $json.html }}",
         "isBodyHtml": true,
