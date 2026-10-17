@@ -187,7 +187,7 @@ export function UploadConsole() {
 
   return <main className="loan-page">
     <header className="site-header">
-      <a href="#" className="wordmark" aria-label="Loan Engine home"><span className="brand-symbol" aria-hidden="true">✳</span> LOAN ENGINE</a>
+      <a href="#" className="wordmark" aria-label="Credora home"><span className="brand-symbol" aria-hidden="true">✳</span> CREDORA</a>
       <nav aria-label="Main navigation"><a href="#how-it-works">How it works</a><a href="#csv-guidance">Data guide</a><a className="nav-action" href="#workspace">Open workspace <span aria-hidden="true">↗</span></a></nav>
     </header>
 
@@ -328,6 +328,6 @@ export function UploadConsole() {
       <p className="mt-8 text-center text-xs text-slate-500">These are potential matches, not guaranteed loan approvals.</p>
       </div>
     </div>
-    <footer className="site-footer"><div><p className="footer-brand">LOAN ENGINE<span aria-hidden="true">✳</span></p><p>Clarity at every step.</p></div><div className="footer-links"><a href="#workspace">Upload data ↗</a><a href="#csv-guidance">CSV guide ↗</a><span>Built for informed decisions.</span></div></footer>
+    <footer className="site-footer"><div><p className="footer-brand">CREDORA<span aria-hidden="true">✳</span></p><p>Clarity at every step.</p></div><div className="footer-links"><a href="#workspace">Upload data ↗</a><a href="#csv-guidance">CSV guide ↗</a><span>Built for informed decisions.</span></div></footer>
   </main>;
 }
