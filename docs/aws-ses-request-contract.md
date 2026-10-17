@@ -1,6 +1,6 @@
 # Offline AWS SES request contract and rollout plan
 
-Audit updated 2026-10-17. Live n8n remains unchanged at 2.43.5. No SES request, workflow execution, dispatcher run, or live database write was performed. The derived image was built and exercised only in isolated containers with networking disabled.
+Audit updated 2026-10-17. The rollout sections below record the original transport-patch deployment and its checks at that time. The later diagnostic-image rollout supersedes its image and override selection; use [current diagnostic rollout instructions](aws-ses-safe-diagnostics.md). The subsequent authorized SES attempt succeeded with owner-confirmed receipt; see [execution 185 evidence](aws-ses-success-evidence.md). No sending was performed during the offline audit or image rollout itself.
 
 ## Transport compatibility
 
@@ -57,7 +57,7 @@ Draft and published Workflow C retain one `toAddresses` entry, `={{ [$json.recip
 
 The fixture now explicitly creates a due event using the host clock minus one minute. A new deterministic boundary test proves a future ordinary event stays unclaimed, becomes claimable exactly at its due time, and a due targeted-recovery event stays excluded throughout. Production dispatcher and recovery code were not weakened or changed. Clock synchronization remains an operational requirement; the old failure's actual host/container skew cannot be reconstructed from saved evidence.
 
-## Safe build, rollout and rollback plan — rollout NOT RUN
+## Safe build, rollout and rollback plan from the offline audit
 
 Build from an isolated context containing only the Dockerfile and the two patch files, never the whole worktree or `.env`. Use `docker build --network=none --pull=false` and retain the original image. The local derived tag is `loan-engine-n8n-ses:2.43.5-contract`. Before rollout, run the complete contract suite with `N8N_SES_PATCH_IMAGE` set to that tag; the harness's `installed` mode tests the built files rather than an in-memory patch. Record the resulting image ID and use that immutable ID in the rollout override.
 
@@ -71,7 +71,7 @@ A separately authorized operator should follow this sequence from the canonical 
 6. Check health, exact n8n version/image ID, credential decryptability and binding without testing the credential against AWS, region, current draft/published version, execution history, one recipient, no retry, and mock/disabled helper settings. Re-run the no-network capture against the deployed image ID. Confirm no new Workflow C execution or SES attempt occurred.
 7. If any check fails, keep sending disabled and replace only the override's image with the recorded original image ID, then recreate only n8n using the same service-only command and persistent volumes. This same-version patch performs no schema migration; routine rollback should not restore over the live database. If integrity checks reveal database damage, stop and use a separately reviewed restore procedure from the validated snapshot, preserving subsequent evidence.
 
-No backup, shutdown, restart, override activation or rollout from this procedure was performed during this task. The image build and offline capture do not authorize deployment or email sending.
+No backup, shutdown, restart, override activation or rollout was performed during the preceding offline-only task; the subsequent authorized local rollout is recorded below. The image build and offline capture do not authorize deployment or email sending.
 
 ## Diagnostics and remaining uncertainty
 
@@ -89,3 +89,41 @@ Owner-confirmed IAM positive/negative simulations remain owner evidence. Sandbox
 - Live read-only postcheck: original n8n image remains healthy, active Workflow C version unchanged, latest execution still 179, three SES rows still ambiguous with one attempt and no provider ID. Both ignored configuration and running helper remain test/mock/disabled/zero-attempt; dispatcher process count is zero.
 
 **Controlled rollout readiness: PASS for the prepared artifact and plan, contingent on the plan's backup/restore checks and separate deployment authorization. Live rollout: NOT_RUN. SES acceptance and receipt: NOT_VERIFIED.**
+
+## Authorized local rollout
+
+Completed 2026-10-17T09:18:20+00:00. **PASS — only the local n8n container image was replaced.** Canonical worktree: `/Users/anubhav/.superset/worktrees/Loan Engine/enthusiastic-space-05804b95`; Compose project: `loan-eligibility-engine`. n8n version remains 2.43.5.
+
+| Artifact | Identifier |
+|---|---|
+| Original retained image | `sha256:4fc4c67bf5fb990201a71d94c7070abf8dd0619cb8af1d059877a447f3640392` |
+| Installed patched image | `sha256:3897004d6718a62a9d9e0d1e3656911690567e1f077e85fdc2dec6ce74caa04a` |
+| Patch SHA-256: repository and installed copy match | `b7927098341b069befe8c7aaa0f7ecbeeee0325f3f9aae7315ef4c91be44babd` |
+
+### Backup verification
+
+Preflight found healthy PostgreSQL/n8n/LocalStack, no running or waiting workflows, no pending/processing notification events, and no dispatcher. Both configuration and helper were test/mock/SES-disabled/zero-attempt. Approximately 3.3 GB was free; the n8n database was approximately 18 MB and the volume 232 KB. Both images already existed, leaving sufficient capacity.
+
+Only n8n was stopped for consistent backups. The private directory `/Users/anubhav/.local/share/loan-engine-backups/n8n-ses-rollout-20261017` contains a custom-format PostgreSQL dump, n8n volume archive, environment/encryption-key copy, original container configuration, image IDs, checksum manifest and preservation snapshots. The directory is mode 0700 and sensitive backup files mode 0600.
+
+The 739,071-byte database dump passed `pg_restore --list` and full `pg_restore --file=/dev/null` parsing. The 21,080-byte volume archive passed full member reading/decompression. File checksums were verified before replacement. **No database restore was executed**, consistent with the restriction against database modification. Backups are outside Git and were not uploaded.
+
+### Rollout and preservation
+
+The service-only Compose replacement used an immutable image override, explicit canonical project directory/project name, and `--no-deps --pull never`. Existing environment values, encryption key, ports, webhook URLs, database and volume mappings were preserved. The guarded rollback path was available but was not needed.
+
+- n8n health and editor HTTP responses: PASS. PostgreSQL and LocalStack remain healthy.
+- Full before/after hashes and counts match for encrypted credentials, workflow definitions/history and execution entities/data. The initial owner-row hash also matched; a later check detected only `user.updatedAt` changing during runtime. Direct field comparison with the backup confirmed all other owner fields, including password, identity and access settings, are identical. This timestamp-only difference is recorded and does not require rollback. Interactive owner login was not performed.
+- Published workflows remain active at exactly these versions: A `a8d31f49-60bb-4ddc-8db5-548ed12a9c75`; B `5b92a0f6-db8f-4caf-8d05-92aaaf1f2fc5`; C `87b22acd-4324-40bd-94f2-6564255589a6`.
+- All 40 execution records are preserved; latest ID remains 179. No unexpected workflow execution was observed.
+- AWS credential binding/decryptability: PASS; region remains `eu-north-1`. Only metadata booleans and region were emitted. One preflight recipient, no additional recipients, no retry, HMAC and preflight nodes are preserved.
+- Installed SES node/helper hashes match the tested immutable image. A network-disabled synthetic capture against that image passes form transport, Version, single-recipient, body/header signing and tamper checks. Fresh pre- and post-rollout contract suites each passed **40 tests**.
+- Application notification/outbox/workflow-execution table fingerprints match exactly. Three historical SES rows remain ambiguous, one attempt each, no Message ID. Test/mock/disabled/zero-attempt state and stopped dispatcher remain intact.
+
+No AWS API command, credential connection test, SES node or workflow was invoked. Unchanged execution and application records support absence of a new SES attempt; a separate network packet audit was not performed. Provider acceptance and inbox receipt remain NOT_VERIFIED.
+
+### Persistent image selection and rollback
+
+Image selection is a **private Compose override**, not a tracked Compose edit. Future n8n recreation must retain it; the base Compose file alone selects the original image. From the canonical worktree use the existing Compose command with explicit `-p loan-eligibility-engine --project-directory . --env-file .env`, the base `-f infrastructure/docker-compose.yml`, and a second `-f /Users/anubhav/.local/share/loan-engine-backups/n8n-ses-rollout-20261017/image-override.yml`, followed by `up -d --no-deps --pull never n8n`.
+
+For a separately requested rollback, substitute `rollback-override.yml`; it selects the retained original image while preserving volumes/configuration. Recheck health and preservation snapshots. Routine image rollback needs no database restore. Do not overwrite newer database state without a separate integrity review. **Rollout PASS; rollback readiness PASS; rollback execution NOT_RUN. No sending is authorized.**
