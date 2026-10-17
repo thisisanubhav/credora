@@ -1,5 +1,9 @@
 # Final assignment requirement-to-evidence matrix
 
+## Gemini update — 2026-10-17
+
+**PASS for actual LLM API usage:** one corrected synthetic extraction request returned HTTP 200 and token usage. The adapter schema/evidence checks passed; downstream harness validation failed on a locally reproduced fixture hash defect. Full n8n Gemini integration and persistence remain PARTIAL. See [evidence and limitations](gemini-live-evidence.md). This supersedes older statements that no live Gemini API use occurred.
+
 ## Latest SES outcome — PASS, execution 185 (2026-10-17 10:26 UTC)
 
 One separately authorized attempt was accepted by AWS SES in `eu-north-1`. The controlled Gmail recipient confirmed receipt with the synthetic product label and required disclaimer. Notification state is `sent`, attempt count **1**, with a persisted provider Message ID. Mock transport is restored, SES disabled, maximum attempts zero, scoped authorization cleared, and dispatcher stopped. Five historical ambiguous notifications are unchanged. See [successful delivery evidence](aws-ses-success-evidence.md).
