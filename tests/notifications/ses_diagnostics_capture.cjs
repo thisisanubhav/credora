@@ -46,7 +46,7 @@ assert.deepEqual(resultItem, {error:'SES request failed; inspect safe diagnostic
 assert(!JSON.stringify(result).includes('sensitive-placeholder-do-not-retain'));
 console.log(JSON.stringify({unitCases:7,nodeOutput:resultItem,signatureVerified:captured.signatureVerified}));
 `);
-process.argv[2] = 'versioned';
+process.argv[2] = process.argv[2] === 'installed' ? 'installed' : 'versioned';
 const mod = new Module('/audit/tests/notifications/offline-diagnostic-run.cjs', module);
 mod.filename = '/audit/tests/notifications/offline-diagnostic-run.cjs';
 mod._compile(source, mod.filename);

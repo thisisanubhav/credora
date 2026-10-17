@@ -44,3 +44,23 @@ A future email attempt requires separate explicit authorization and fresh isolat
 ### Recorded results
 
 Fresh notification suite: **88 passed**. After adding an explicit one-request assertion, all three diagnostic cases passed again. Ruff passed; Mypy passed for 54 source files; `git diff --check` passed. Final read-only safety checks confirm mock transport, SES disabled, authorization cleared, no dispatcher, four ambiguous one-attempt/no-Message-ID notifications, no pending completion event, and latest Workflow C execution unchanged at 181.
+
+## Authorized local rollout attempt — 2026-10-17
+
+**ROLLED BACK / preservation gate failed.** The diagnostic image is built and tested, but is not the image currently running.
+
+- Derived image: `sha256:7a6c3576b77f302b0ba1c13bb9de2ea2687487a52c5466a99dd6d248ff4586e2`.
+- Restored, healthy runtime image: `sha256:3897004d6718a62a9d9e0d1e3656911690567e1f077e85fdc2dec6ce74caa04a`.
+- Reproducible recipe: `infrastructure/Dockerfile.n8n-ses-diagnostics`. Build from a minimal temporary context containing that Dockerfile and its four listed patch files, not the whole worktree. The repository's default Docker ignore rules deliberately exclude patches.
+- Network-disabled build succeeded from the pinned local base. Installed diagnostic-image checks passed **43 tests**, including request contract, signatures and all three error diagnostic cases. The diagnostic harness now supports `N8N_SES_DIAGNOSTICS_IMAGE` to test built files rather than only an in-memory transform.
+- Verified fresh backups are outside Git at `/Users/anubhav/.local/share/loan-engine-backups/n8n-ses-diagnostics-rollout-20261017`. PostgreSQL custom archive passed full decode to `/dev/null` without a database restore. Volume archive was fully read; encryption configuration and original image metadata were preserved with restricted permissions. Checksums were validated before rollout.
+- Disk checks showed approximately 3 GiB available on host and Docker filesystem; database size was approximately 18 MB. Docker's aggregate disk-usage command reported a missing snapshot, but actual image inspection, isolated image tests and build succeeded. No prune or volume deletion was performed.
+- Only n8n was recreated, preserving its volumes, encryption key and environment. The post-start preservation comparison detected `workflow_history` falling from 10 rows to 7. The guard restored the previous image automatically. No database restore was performed.
+- Removed old Workflow C version IDs: `fbff61e0-10eb-4c43-b980-5d8d6c34466a`, `0eb07b36-8cab-44a7-a115-720178c52b54`, `36d179c0-d3cf-4fd4-89c6-a59a7e87dbe7`. Their backup creation timestamps are 2026-10-16 around 09:19–09:26 UTC. All seven remaining rows are byte-equivalent to their backup values.
+- Installed `WorkflowHistoryManager.prune()` deletes older versions except current/active ones, using the configured/license-bounded retention window. Automatic retention is a likely explanation for the old-row removal; the precise triggering invocation was not captured. Do not claim this diagnostic code deleted the rows or that full history preservation passed.
+- Final verification against the pre-rollout snapshot found **only workflow_history differs**. Published workflows, encrypted credentials, owner records, all execution records and application notification/outbox/recovery records are unchanged. Current Workflow C remains `87b22acd-4324-40bd-94f2-6564255589a6`; latest execution is 181. Four historical SES notifications remain ambiguous with one attempt and no Message ID.
+- Mock/disabled/zero-attempt settings remain active. No pending completion events or dispatcher. No workflow was manually invoked, no SES send was performed, and no AWS API was called by this rollout.
+
+### Remaining gate
+
+Before another rollout, determine an appropriate history-retention/preservation approach. The three removed history rows remain in the verified backup. Do not blindly restore the whole n8n database over current state or modify history records without a reviewed recovery plan. The current saved original image override remains the safe runtime choice; do not use the diagnostic candidate override as a startup default yet. Further email attempts remain unauthorized.
