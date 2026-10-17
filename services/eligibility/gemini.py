@@ -38,7 +38,7 @@ def advise(decision: Decision, *, client: httpx.Client | None = None) -> str:
               "Classify it only as unresolved or unsupported. Never claim eligibility. "
               + json.dumps({"reason_codes": [r["code"] for r in decision.reasons]}, sort_keys=True))
     payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {
-        "responseFormat": {"text": {"mimeType": "application/json", "schema": {
+        "responseFormat": {"text": {"mimeType": "APPLICATION_JSON", "schema": {
             "type": "object", "properties": {"status": {"type": "string", "enum": ["unresolved", "unsupported"]},
                                             "explanation_code": {"type": "string"}},
             "required": ["status", "explanation_code"]}}}, "temperature": 0}}
