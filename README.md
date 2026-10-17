@@ -208,7 +208,7 @@ Gemini uses `GEMINI_API_KEY` and `GEMINI_MODEL` in the private helper, never a b
 | Optimized matching | SQL prefilter plus deterministic checks; positive demos use synthetic products |
 | Real AWS SES sending | **PASS:** execution 185 returned a Message ID, persisted `sent` at attempt count 1 |
 | Actual inbox receipt | **PASS, owner-confirmed:** synthetic label and required disclaimer received in Gmail |
-| Gemini | **PASS for live API use:** corrected adapter received HTTP 200 and token usage; full workflow integration remains partial due to a synthetic harness hash error. [Evidence](docs/gemini-live-evidence.md) |
+| Gemini | **PASS for live extraction and application validation:** one request returned two evidence-backed clauses, HTTP 200; app validation passed. Verified in an isolated synthetic harness, not a new n8n execution. [Evidence](docs/gemini-live-evidence.md) |
 | Cloud infrastructure | Serverless configuration and Lambda packaging validated offline; not deployed |
 | Submission | Evaluator access, demonstration video and submission remain outstanding |
 
