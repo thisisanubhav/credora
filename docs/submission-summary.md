@@ -6,7 +6,7 @@ Repository: <https://github.com/thisisanubhav/loan-eligibility-engine> (private)
 
 The canonical development copy is the populated SES worktree on `feat/aws-ses-final-test-preparation`, with Compose project `loan-eligibility-engine`. Its application and n8n state were backed up locally, then checked after moving host API/frontend/ingestion processes to that worktree. The older restart worktree has a separate empty application database. See [environment reconciliation](environment-reconciliation.md) for ownership, ports, and preserved record IDs, and [fresh release verification](release-verification.md) for the isolated regression and security checks. The SES source branch is a descendant of the current remote default; publication is verified only by checking the remote branch after push.
 
-The controlled SES attempt still has a `Forbidden` node result, two ambiguous notification records with one attempt each, no provider Message ID, and no confirmed inbox receipt. Mock transport is active and the dispatcher is stopped. Live Gemini use, evaluator access, the demonstration video, and the submission form remain incomplete. This repository is **not assignment submission-ready**.
+The latest separately authorized SES attempt used a fresh synthetic batch and reached Workflow C execution **179**. Its SES node returned `Bad request - please check your parameters`; no provider Message ID or accepted-send response was retained. The new notification is `ambiguous` after one attempt, alongside two earlier ambiguous records. The owner checked Inbox and Spam and confirmed no email was received. Mock transport is restored and the dispatcher is stopped. Live Gemini use, evaluator access, the demonstration video, and the submission form remain incomplete. This repository is **not assignment submission-ready**.
 
 ## Architecture and stack
 
@@ -20,9 +20,11 @@ The isolated clean clone produced one real browser/LocalStack batch with 3 accep
 
 After that baseline, one separately authorized, batch-scoped real SES test reached published n8n Workflow C execution **177** and its SES node exactly once. The node returned `Forbidden - perhaps check your credentials?`; no SES Message ID was returned, the notification is conservatively `ambiguous` with one attempt, and the owner reported **no inbox receipt**. Mock mode and zero-attempt settings were restored. This is **not** a successful SES demonstration; see [sanitized live evidence](aws-ses-live-evidence.md). No retry is authorized.
 
+On 2026-10-17, the owner authorized one attempt on fresh batch `adcf1f84-f6b6-4dad-9010-c613c037553f`. Exact-event dispatch reached Workflow C **179** once; the SES node returned `Bad request - please check your parameters`. There was no Message ID or accepted-send evidence. The new notification remains `ambiguous`, attempt count one, with no retry. Test/mock/disabled/zero settings and cleared scoped authorization were verified after rollback. The owner confirmed no Inbox or Spam receipt; [the latest evidence](aws-ses-live-evidence.md) records the exact boundary.
+
 ## Honest limitations
 
-- The budget is ₹0: no RDS, real S3/Lambda, AWS SES delivery, inbox receipt or live Gemini request. The one SES attempt was owner-authorized under owner-confirmed spending safeguards but failed; LocalStack/fixtures/mocks must not be represented as live AWS services.
+- The budget is ₹0: no RDS, real S3/Lambda, verified AWS SES delivery, inbox receipt or live Gemini request. The authorized SES attempts have produced no Message ID; LocalStack/fixtures/mocks must not be represented as live AWS services.
 - Official bank eligibility remains incomplete, and sample income has no currency. Neither bank is automatically matched; synthetic fixtures are clearly separate.
 - The future AWS JWT API lacks a browser OIDC login, RDS certificate verification and privately hosted n8n. The local editor's Code signer is unsuitable for multi-user hosting.
 - The installed n8n SES node cannot send both HTML and plain-text alternatives in one `email.send` call. An actual received SES email—required by the PDF—has not been demonstrated.
