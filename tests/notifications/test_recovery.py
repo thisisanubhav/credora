@@ -331,7 +331,9 @@ def test_duplicate_and_concurrent_release_only_one_succeeds(held):
 def test_release_preserves_unrelated_event(held):
     with session_scope(held["app"]) as session:
         other = OutboxEvent(event_id=uuid.uuid4(), event_type="upload_batch.ready.v1",
-                            aggregate_id=held["batch"], payload={"test": True})
+                            aggregate_id=held["batch"], payload={"test": True},
+                            # This tests scope isolation, not host/container clock agreement.
+                            next_attempt_at=datetime.now(UTC) - timedelta(minutes=1))
         session.add(other)
         other_id = other.event_id
     _release(held)
@@ -343,3 +345,36 @@ def test_release_preserves_unrelated_event(held):
     assert ordinary is not None and ordinary["event_id"] == str(other_id)
     with session_scope(held["app"]) as session:
         assert session.get(OutboxEvent, held["event"]).status == "pending"
+
+
+def test_claim_respects_due_boundary_and_targeted_scope(held, monkeypatch):
+    from services.eligibility import dispatcher
+
+    _release(held)
+    with session_scope(held["app"]) as session:
+        released = session.get(OutboxEvent, held["event"])
+        boundary = released.next_attempt_at + timedelta(minutes=1)
+        other = OutboxEvent(event_id=uuid.uuid4(), event_type="upload_batch.ready.v1",
+                            aggregate_id=held["batch"], payload={"test": True},
+                            next_attempt_at=boundary)
+        session.add(other)
+        other_id = other.event_id
+
+    class Clock(datetime):
+        current = boundary - timedelta(seconds=1)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current
+
+    monkeypatch.setattr(dispatcher, "datetime", Clock)
+    # Targeted recovery is due but excluded; the ordinary event is not due yet.
+    assert claim_due(held["app"]) is None
+    with session_scope(held["app"]) as session:
+        assert session.get(OutboxEvent, other_id).retry_count == 0
+    Clock.current = boundary
+    claimed = claim_due(held["app"])
+    assert claimed is not None and claimed["event_id"] == str(other_id)
+    with session_scope(held["app"]) as session:
+        released = session.get(OutboxEvent, held["event"])
+        assert released.status == "pending" and released.retry_count == 1
