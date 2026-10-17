@@ -1,0 +1,10 @@
+--- a/dist/nodes/Aws/SES/AwsSes.node.js
++++ b/dist/nodes/Aws/SES/AwsSes.node.js
+@@ -924,7 +924,7 @@
+                         if (additionalFields.ccAddresses) {
+                             setParameter(params, 'Destination.CcAddresses.member', additionalFields.ccAddresses);
+                         }
+-                        responseData = await GenericFunctions_1.awsApiRequestSOAP.call(this, 'email', 'POST', '/?Action=SendEmail&' + params.join('&'));
++                        responseData = await GenericFunctions_1.awsApiRequestSOAP.call(this, 'email', 'POST', '/?Action=SendEmail&Version=2010-12-01&' + params.join('&'));
+                     }
+                     if (operation === 'sendTemplate') {
