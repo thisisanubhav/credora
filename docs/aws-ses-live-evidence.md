@@ -201,7 +201,7 @@ The owner explicitly authorized exactly one SES test email. The earlier pasted p
 | Application diagnostic | ses_node_error_or_timeout |
 | Outbox event status / claim count | delivered / 1 |
 | Pending completion events afterward | 0 |
-| Inbox receipt | NOT_VERIFIED, owner asked to inspect Inbox and Spam |
+| Inbox receipt | Owner confirmed **No email received** |
 
 Preflight verified a healthy canonical diagnostic image, the exact pending event at retry count zero, one synthetic user/match, no prior reservation, scoped key match, controlled identity isolation, unchanged historical notifications and published recipient/preflight/HMAC configuration. Only the helper was refreshed for temporary test/SES/enabled/one-attempt mode. Only the authorized event was dispatched once; no background dispatcher was started.
 

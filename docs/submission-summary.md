@@ -2,7 +2,7 @@
 
 ## Latest SES result — execution 183, 2026-10-17 09:58 UTC
 
-**FAIL for provider acceptance.** One separately authorized attempt on the diagnostic image returned HTTP **400**, AWS **MessageRejected**, request ID `27ff80c4-8694-49f5-bdab-7356ef54d0cb`, with no SES Message ID. Workflow success reflects a handled error. The notification is ambiguous at one attempt; four previous ambiguous records are unchanged. Mock mode is restored, SES disabled, scoped authorization cleared, dispatcher stopped, and no completion event is pending. Inbox receipt is NOT_VERIFIED pending the owner's reply. This supersedes earlier attempt summaries below. Actual SES delivery remains incomplete; no submission readiness is claimed. See [live evidence](aws-ses-live-evidence.md#diagnostic-image-single-attempt--execution-183).
+**FAIL for provider acceptance.** One separately authorized attempt on the diagnostic image returned HTTP **400**, AWS **MessageRejected**, request ID `27ff80c4-8694-49f5-bdab-7356ef54d0cb`, with no SES Message ID. Workflow success reflects a handled error. The notification is ambiguous at one attempt; four previous ambiguous records are unchanged. Mock mode is restored, SES disabled, scoped authorization cleared, dispatcher stopped, and no completion event is pending. The owner checked the controlled inbox and confirmed no email received. This supersedes earlier attempt summaries below. Actual SES delivery remains incomplete; no submission readiness is claimed. See [live evidence](aws-ses-live-evidence.md#diagnostic-image-single-attempt--execution-183).
 
 ## Latest controlled attempt — 2026-10-17 09:34 UTC
 
