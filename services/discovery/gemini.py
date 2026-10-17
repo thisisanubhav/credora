@@ -64,7 +64,7 @@ def structure_qualitative(
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"responseFormat": {"text": {
-            "mimeType": "application/json", "schema": RESPONSE_SCHEMA,
+            "mimeType": "APPLICATION_JSON", "schema": RESPONSE_SCHEMA,
         }}, "temperature": 0},
     }
     owned_client = client is None
