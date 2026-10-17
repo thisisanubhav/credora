@@ -355,3 +355,46 @@ def test_concurrent_internal_nonce_claim_has_one_winner(clean_db, monkeypatch):
         outcomes = list(pool.map(lambda _: verify_and_reserve(
             clean_db, body, headers, method="POST", path="/matching/batch"), range(2)))
     assert sorted(outcomes) == [False, True]
+
+
+@pytest.mark.parametrize("adapter", ["discovery", "matching"])
+def test_gemini_rest_mime_enum_contract(page, monkeypatch, adapter):
+    """Validate the wire contract that the live REST API rejected on 2026-10-17."""
+    from datetime import UTC, datetime
+
+    from services.eligibility.gemini import advise
+    from services.eligibility.rules import Decision
+
+    monkeypatch.setenv("GEMINI_API_KEY", "synthetic-contract-key")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.8-flash")
+    calls = []
+    quote = page.eligibility_text[:60]
+
+    def handler(request):
+        calls.append(request)
+        assert request.method == "POST"
+        assert request.url.path.endswith(":generateContent")
+        body = json.loads(request.content)
+        config = body["generationConfig"]["responseFormat"]["text"]
+        # REST TextResponseFormat.MimeType is an enum, not a media-type string.
+        assert config["mimeType"] == "APPLICATION_JSON"
+        assert config["schema"]["type"] == "object"
+        assert config["schema"]["required"]
+        result = ({"clauses": [{"text": quote, "evidence_quote": quote, "state": "UNKNOWN"}]}
+                  if adapter == "discovery" else {"status": "unresolved", "explanation_code": "missing_data"})
+        return httpx.Response(200, json={"candidates": [{"content": {
+            "parts": [{"text": json.dumps(result)}],
+        }}]})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        if adapter == "discovery":
+            candidate, status = structure_qualitative(extract_deterministic(page), page, client=client)
+            assert status == "used"
+            assert candidate.verification_status == "review_required"
+        else:
+            decision = Decision(user_id="synthetic-user", batch_id="synthetic-batch", product_id="synthetic-product",
+                                product_version=1, status="REVIEW_REQUIRED", reasons=[{"code": "missing_data"}],
+                                evaluated_at=datetime.now(UTC), decision_input_sha256="0" * 64)
+            assert advise(decision, client=client) == "unresolved"
+            assert decision.status == "REVIEW_REQUIRED"
+    assert len(calls) == 1
