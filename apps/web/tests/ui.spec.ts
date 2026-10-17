@@ -44,7 +44,7 @@ test("initial page is accessible by keyboard and responsive", async ({ page }) =
   await expect(page.getByRole("button", { name: "Upload CSV" })).toBeDisabled();
   await expect(page.locator("#csv-file")).toHaveAttribute("accept", /csv/);
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "Loan Engine home" })).toBeFocused();
+  await expect(page.getByRole("link", { name: "Credora home" })).toBeFocused();
   for (let index = 0; index < 5; index += 1) await page.keyboard.press("Tab");
   await expect(page.locator("#csv-file")).toBeFocused();
   await page.setViewportSize({ width: 390, height: 844 });
